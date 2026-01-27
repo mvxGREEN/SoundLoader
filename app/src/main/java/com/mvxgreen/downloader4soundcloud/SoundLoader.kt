@@ -33,6 +33,10 @@ object SoundLoader {
     var mMp3Urls = mutableListOf<String>()
 
     var playlistDownloadId: Long = -1L
+
+    // FIX 1: Track Thumbnail ID to prevent it from being counted as a chunk
+    var thumbnailDownloadId: Long = -1L
+
     var isShared = false
     var isPlaylist = false
 
@@ -52,7 +56,6 @@ object SoundLoader {
         File(absPathDocsTemp).mkdirs()
     }
 
-    // FIX 1: Aggressively reset all state
     fun resetVars() {
         Log.d(TAG, "Full Reset of Variables")
         mStreamUrl = ""
@@ -63,9 +66,11 @@ object SoundLoader {
         mThumbnailFilename = ""
         mPlayerUrl = ""
         mMp3Urls.clear()
+
         playlistDownloadId = -1L
+        thumbnailDownloadId = -1L // Reset thumbnail ID
+
         isPlaylist = false
-        // Clean up temp files immediately on reset
         deleteTempFiles()
     }
 
@@ -95,9 +100,8 @@ object SoundLoader {
 
             // 3. Player URL Extraction
             var playerMeta = doc.select("meta[property=twitter:player]").attr("content")
-            if (playerMeta.isEmpty()) {
-                playerMeta = doc.select("meta[name=twitter:player]").attr("content")
-            }
+            if (playerMeta.isEmpty()) playerMeta = doc.select("meta[name=twitter:player]").attr("content")
+
             if (playerMeta.isEmpty()) {
                 val token = "twitter:player"
                 val startIdx = html.indexOf(token)
@@ -121,6 +125,7 @@ object SoundLoader {
             if (matcher.find()) {
                 var foundUrl = matcher.group(1)
                 foundUrl = foundUrl?.replace("\\/", "/")
+
                 if (!foundUrl.isNullOrEmpty()) {
                     mStreamUrl = foundUrl
                     Log.d(TAG, "Found Progressive MP3 Stream: $mStreamUrl")
@@ -176,8 +181,6 @@ object SoundLoader {
         val file = File(m3uPath)
         if (file.exists()) {
             file.forEachLine { line -> if (!line.startsWith("#")) urls.add(line) }
-        } else {
-            Log.e(TAG, "M3U file missing at $m3uPath")
         }
         return@withContext urls
     }
@@ -192,35 +195,21 @@ object SoundLoader {
         val tempDir = File(absPathDocsTemp)
 
         Log.d(TAG, "Concatenating $count chunks...")
-        var bytesWritten = 0L
 
         for (i in 0 until count) {
             val chunkFile = tempDir.listFiles { _, name -> name.startsWith("s$i.") }?.firstOrNull()
             if (chunkFile != null && chunkFile.exists() && chunkFile.length() > 0) {
-                try {
-                    val bytes = chunkFile.readBytes()
-                    outStream.write(bytes)
-                    bytesWritten += bytes.size
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error writing chunk $i", e)
-                }
-            } else {
-                Log.e(TAG, "Missing chunk s$i")
+                try { outStream.write(chunkFile.readBytes()) } catch (e: Exception) {}
             }
         }
         outStream.flush()
         outStream.close()
-
-        Log.d(TAG, "Concat complete. Size: $bytesWritten bytes")
         return@withContext destPath
     }
 
     suspend fun setTags(filePath: String) = withContext(Dispatchers.IO) {
         val file = File(filePath)
-        if (!file.exists() || file.length() == 0L) {
-            Log.e(TAG, "Cannot tag empty or missing file: $filePath")
-            return@withContext
-        }
+        if (!file.exists() || file.length() < 100) return@withContext
 
         try {
             TagOptionSingleton.getInstance().isAndroid = true
@@ -240,15 +229,9 @@ object SoundLoader {
         }
     }
 
-    // FIX 2: Prevent creating empty files
     suspend fun moveFileToDocuments(privatePath: String): String = withContext(Dispatchers.IO) {
         val source = File(privatePath)
-
-        // Validation check
-        if (!source.exists() || source.length() < 100) {
-            Log.e(TAG, "ABORTING MOVE: Source file is empty or too small (${source.length()} bytes)")
-            return@withContext ""
-        }
+        if (!source.exists() || source.length() < 100) return@withContext ""
 
         val docsDir = File(absPathDocs)
         if (!docsDir.exists()) docsDir.mkdirs()
@@ -267,25 +250,19 @@ object SoundLoader {
 
         try {
             source.copyTo(destFile, overwrite = true)
-            Log.d(TAG, "Success: Moved to ${destFile.absolutePath}")
             return@withContext destFile.absolutePath
         } catch (e: Exception) {
-            Log.e(TAG, "Move failed", e)
             return@withContext ""
         }
     }
 
     fun deleteTempFiles() {
         try {
-            Log.d(TAG, "Cleaning temp directory...")
             val dir = File(absPathDocsTemp)
             if (dir.exists()) {
                 dir.deleteRecursively()
             }
-            // CRITICAL: Immediately recreate the folder so it is ready for the next DownloadManager call
             dir.mkdirs()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error cleaning temp files", e)
-        }
+        } catch (e: Exception) {}
     }
 }

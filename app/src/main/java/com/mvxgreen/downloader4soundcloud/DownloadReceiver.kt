@@ -14,35 +14,27 @@ import kotlinx.coroutines.withContext
 
 class DownloadReceiver : BroadcastReceiver() {
 
-    // These should ideally be static or part of a singleton state if the Receiver is recreated,
-    // but for standard broadcast flows, this instance often persists during the burst.
-    // Ideally, rely on SoundLoader state if you encounter persistence issues.
     private var chunksDownloaded = 0
     private var totalChunks = 0
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == DownloadManager.ACTION_DOWNLOAD_COMPLETE) {
             val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-            Log.d("DownloadReceiver", "Received Download Complete. ID: $id. Expected M3U ID: ${SoundLoader.playlistDownloadId}")
+            Log.d("DownloadReceiver", "Download Complete. ID: $id")
 
             val realM3uPath = SoundLoader.absPathDocsTemp + "playlist.m3u"
 
-            // PHASE 1: Waiting for Playlist (M3U)
-            // If we haven't parsed chunks yet (totalChunks == 0), we ONLY care about the M3U download.
+            // PHASE 1: Waiting for Playlist
             if (totalChunks == 0) {
                 if (id == SoundLoader.playlistDownloadId) {
-                    Log.d("DownloadReceiver", "M3U Download Finished! Extracting chunks...")
-
-                    // Reset chunk counter for safety
-                    chunksDownloaded = 0
+                    chunksDownloaded = 0 // Reset
 
                     CoroutineScope(Dispatchers.Main).launch {
                         val urls = SoundLoader.extractMp3Urls(realM3uPath)
-
                         if (urls.isNotEmpty()) {
                             totalChunks = urls.size
                             SoundLoader.mMp3Urls = urls.toMutableList()
-                            Log.d("DownloadReceiver", "Queueing $totalChunks chunk downloads")
+                            Log.d("DownloadReceiver", "Starting download of $totalChunks chunks")
 
                             val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                             urls.forEachIndexed { index, url ->
@@ -51,30 +43,29 @@ class DownloadReceiver : BroadcastReceiver() {
                                 req.setDestinationInExternalFilesDir(context, "temp", "s$index.mp3")
                                 dm.enqueue(req)
                             }
-                        } else {
-                            Log.e("DownloadReceiver", "No URLs found in M3U file. Download aborted.")
                         }
                     }
-                } else {
-                    // CRITICAL FIX: Ignore thumbnail or other downloads while waiting for M3U
-                    // This prevents the "0 >= 0" race condition.
-                    Log.d("DownloadReceiver", "Ignoring ID $id (Not the M3U we are waiting for).")
                 }
+                // Ignore Thumbnail here too
             }
             // PHASE 2: Waiting for Chunks
             else {
-                // We are strictly waiting for chunks now.
-                // We should ignore the M3U ID (already processed) and Thumbnail ID (irrelevant to progress).
-                // A robust check would track all chunk IDs, but usually counting hits is sufficient if we ignore the playlist ID.
-
-                if (id != SoundLoader.playlistDownloadId) {
+                // FIX 3: Strict ignoring of Playlist AND Thumbnail IDs
+                if (id != SoundLoader.playlistDownloadId && id != SoundLoader.thumbnailDownloadId) {
                     chunksDownloaded++
-                    Log.d("DownloadReceiver", "Chunk finished. Progress: $chunksDownloaded / $totalChunks")
+                    Log.d("DownloadReceiver", "Chunk processed. Progress: $chunksDownloaded/$totalChunks")
 
                     if (chunksDownloaded >= totalChunks) {
-                        Log.d("DownloadReceiver", "All chunks done. Finishing track.")
+                        Log.d("DownloadReceiver", "All chunks done. Locking & Finishing.")
+
+                        // FIX 4: Immediate Lock to prevent Double Entry (Race Condition)
+                        totalChunks = 0
+                        chunksDownloaded = 0
+
                         finishTrack(context)
                     }
+                } else {
+                    Log.d("DownloadReceiver", "Ignored non-chunk download (ID: $id)")
                 }
             }
         }
@@ -84,10 +75,8 @@ class DownloadReceiver : BroadcastReceiver() {
         val appContext = context.applicationContext
 
         CoroutineScope(Dispatchers.IO).launch {
-            Log.d("DownloadReceiver", "Finishing track (Concat -> Tag -> Move)")
-
             // 1. Concat
-            val privatePath = SoundLoader.concatMp3(totalChunks)
+            val privatePath = SoundLoader.concatMp3(SoundLoader.mMp3Urls.size)
 
             // 2. Tag
             SoundLoader.setTags(privatePath)
@@ -98,22 +87,14 @@ class DownloadReceiver : BroadcastReceiver() {
             withContext(Dispatchers.Main) {
                 if (finalPath.isNotEmpty()) {
                     MediaScannerConnection.scanFile(appContext, arrayOf(finalPath), null, null)
-                    Log.d("DownloadReceiver", "Track finished successfully: $finalPath")
-                } else {
-                    Log.e("DownloadReceiver", "Track finish failed (Empty or missing file).")
+                    Log.d("DownloadReceiver", "Track finished: $finalPath")
                 }
 
-                // Cleanup
                 SoundLoader.deleteTempFiles()
 
-                // Notify UI
                 val i = Intent("DOWNLOAD_FINISHED")
                 i.setPackage(appContext.packageName)
                 appContext.sendBroadcast(i)
-
-                // Reset local state for safety
-                totalChunks = 0
-                chunksDownloaded = 0
             }
         }
     }
