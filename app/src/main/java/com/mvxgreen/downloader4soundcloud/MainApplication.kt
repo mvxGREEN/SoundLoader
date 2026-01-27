@@ -8,18 +8,13 @@ class MainApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // Initialize Firebase
-        // Replaces FirebaseApp.InitializeApp(MainActivity.ActivityCurrent) from MAUI
+        // 1. Initialize Context for SoundLoader (CRITICAL FIX)
+        SoundLoader.appContext = this
+
         FirebaseApp.initializeApp(this)
+        MobileAds.initialize(this) {}
 
-        // Initialize AdMob
-        // Replaces the LoadAdmob() call from MainActivity.cs in MAUI
-        MobileAds.initialize(this) { initializationStatus ->
-            // Optional: Handle initialization complete
-        }
-
-        // You can also trigger directory preparation here if you want it done
-        // strictly at app launch, rather than Activity creation.
-        // SoundLoader.prepareFileDirs()
+        // Ensure temp dirs exist
+        SoundLoader.prepareFileDirs()
     }
 }

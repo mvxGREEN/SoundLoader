@@ -5,11 +5,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Environment
 import android.os.IBinder
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import android.util.Log
 
 class DownloadService : Service() {
 
@@ -24,20 +21,25 @@ class DownloadService : Service() {
 
     private fun startDownload() {
         val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        SoundLoader.deleteTempFiles()
 
         // 1. Download M3U
         if (SoundLoader.mM3uUrl.isNotEmpty()) {
+            Log.d("DownloadService", "Enqueuing Playlist Download: ${SoundLoader.mM3uUrl}")
             val request = DownloadManager.Request(Uri.parse(SoundLoader.mM3uUrl))
-                .setTitle("Downloading Track Info")
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOCUMENTS, "temp/playlist.m3u")
+            request.setTitle("Downloading Track Info")
+            request.setDestinationInExternalFilesDir(this, "temp", "playlist.m3u")
 
-            downloadManager.enqueue(request)
+            // FIX: Store the specific ID so Receiver knows which file is the M3U
+            SoundLoader.playlistDownloadId = downloadManager.enqueue(request)
+        } else {
+            Log.e("DownloadService", "M3U URL is empty!")
         }
 
         // 2. Download Thumbnail
         if (SoundLoader.mThumbnailUrl.isNotEmpty()) {
             val request = DownloadManager.Request(Uri.parse(SoundLoader.mThumbnailUrl))
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOCUMENTS, "temp/" + SoundLoader.mThumbnailFilename)
+            request.setDestinationInExternalFilesDir(this, "temp", SoundLoader.mThumbnailFilename)
             downloadManager.enqueue(request)
         }
     }
