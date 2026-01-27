@@ -4,7 +4,7 @@
 
     <item
         android:id="@+id/action_upgrade"
-        android:title="Upgrade"
+        android:title="@string/upgrade"
         android:icon="@drawable/ic_diamond"
         app:showAsAction="always" />
 
@@ -17,17 +17,17 @@
 
     <item
         android:id="@+id/action_about"
-        android:title="About"
+        android:title="@string/about"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/action_privacy"
-        android:title="Privacy"
+        android:title="@string/privacy"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/action_enable_background"
-        android:title="Enable Background"
+        android:title="@string/enable_background"
         app:showAsAction="never"
         android:visible="false" />
 
