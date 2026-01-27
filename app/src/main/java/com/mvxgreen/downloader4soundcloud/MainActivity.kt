@@ -244,14 +244,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Resolves logic for scraping (Equivalent to loadHtml in previous steps)
     private fun loadMediaData(url: String) {
         fetchJob = CoroutineScope(Dispatchers.Main).launch {
-            // 1. Scrape metadata (Title, Artist, Stream Base URL)
             val success = SoundLoader.loadHtml(url)
 
             if (success) {
-                // 2. Populate UI (Visuals only)
+                // Populate UI
                 binding.previewTitle.text = SoundLoader.mTitle
                 binding.previewArtist.text = SoundLoader.mArtist
 
@@ -262,12 +260,15 @@ class MainActivity : AppCompatActivity() {
                         .into(binding.previewImg)
                 }
 
-                // 3. TRIGGER WEBVIEW (Changed)
-                // We do NOT go to UIState.PREVIEW yet. We need the client_id first.
-                // Loading the original URL in the hidden WebView will force it to
-                // make network calls containing the client_id.
-                SoundLoader.mClientId = "" // Reset ID to ensure we get a fresh one
-                binding.previewWebview.loadUrl(url)
+                // FIX: Load the Extracted Player URL (Widget) to get the correct Client ID [cite: 2]
+                if (SoundLoader.mPlayerUrl.isNotEmpty()) {
+                    SoundLoader.mClientId = ""
+                    Log.d("MainActivity", "Loading Widget URL: ${SoundLoader.mPlayerUrl}")
+                    binding.previewWebview.loadUrl(SoundLoader.mPlayerUrl)
+                } else {
+                    Log.e("MainActivity", "Player URL missing")
+                    updateUI(UIState.EMPTY)
+                }
 
             } else {
                 Toast.makeText(this@MainActivity, "Could not load track data", Toast.LENGTH_SHORT).show()

@@ -13,6 +13,7 @@ class DownloadService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d("DownloadService", "onStartCommand Action: ${intent?.action}")
         if (intent?.action == "START_DOWNLOAD") {
             startDownload()
         }
@@ -23,20 +24,19 @@ class DownloadService : Service() {
         val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         SoundLoader.deleteTempFiles()
 
-        // 1. Download M3U
+        Log.d("DownloadService", "Starting Download. M3U URL: ${SoundLoader.mM3uUrl}")
+
         if (SoundLoader.mM3uUrl.isNotEmpty()) {
-            Log.d("DownloadService", "Enqueuing Playlist Download: ${SoundLoader.mM3uUrl}")
             val request = DownloadManager.Request(Uri.parse(SoundLoader.mM3uUrl))
             request.setTitle("Downloading Track Info")
             request.setDestinationInExternalFilesDir(this, "temp", "playlist.m3u")
 
-            // FIX: Store the specific ID so Receiver knows which file is the M3U
             SoundLoader.playlistDownloadId = downloadManager.enqueue(request)
+            Log.d("DownloadService", "Enqueued M3U. ID: ${SoundLoader.playlistDownloadId}")
         } else {
-            Log.e("DownloadService", "M3U URL is empty!")
+            Log.e("DownloadService", "ERROR: M3U URL is empty. Download cannot start.")
         }
 
-        // 2. Download Thumbnail
         if (SoundLoader.mThumbnailUrl.isNotEmpty()) {
             val request = DownloadManager.Request(Uri.parse(SoundLoader.mThumbnailUrl))
             request.setDestinationInExternalFilesDir(this, "temp", SoundLoader.mThumbnailFilename)
