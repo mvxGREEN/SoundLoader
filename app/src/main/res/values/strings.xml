@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">SoundLoader</string>
     <string name="paste_url">Paste URL…</string>
+    <string name="clear_button">clear button</string>
 </resources>

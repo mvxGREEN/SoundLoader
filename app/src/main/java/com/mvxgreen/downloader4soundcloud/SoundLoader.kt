@@ -23,6 +23,14 @@ import java.net.URL
 object SoundLoader {
     private const val TAG = "SoundLoader"
 
+    var totalItems = 0
+    var completedItems = 0
+    var isShared = false
+    //var isAlbum = false
+    var isPlaylist = false  // use for playlist and album
+    var isCancelled = false
+
+
     // State variables
     var mClientId = ""
     var mStreamUrl = ""
@@ -32,6 +40,15 @@ object SoundLoader {
     var mTitle = ""
     var mArtist = ""
     var mThumbnailUrl = ""
+    var mM3uFileName = "audio_playlist"
+    var mFilePath = ""
+
+    // Receiver State
+    var mCountChunks = 0
+    var mCountChunksFinal = 0
+
+    var mMediaUrls = mutableListOf<String>()
+    var mChunkUrls = mutableListOf<String>()
 
     // Constants
     private const val STREAM_URL_BASE = "https://api-v2.soundcloud.com/media/soundcloud:tracks:"
@@ -46,6 +63,24 @@ object SoundLoader {
     fun prepareFileDirs() {
         File(absPathDocs).mkdirs()
         File(absPathDocsTemp).mkdirs()
+    }
+
+    fun resetVars() {
+        // When we start fresh, ensure we are NOT cancelled
+        isCancelled = false
+
+        mMediaUrls.clear()
+        mChunkUrls.clear()
+        mTitle = ""
+        isPlaylist = false
+        mM3uUrl = ""
+
+        // Reset counters
+        totalItems = 0
+        completedItems = 0
+
+        // TODO implement ?
+        //DownloadReceiver.reset()
     }
 
     // Coroutine to load HTML and parse logic
