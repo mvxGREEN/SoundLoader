@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.IBinder
-import com.bumptech.glide.Glide
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -17,17 +16,21 @@ class DownloadService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "START_DOWNLOAD") {
-            startDownload()
+            // FIX: Launch on IO to prevent "Skipped frames"
+            CoroutineScope(Dispatchers.IO).launch {
+                startDownload()
+            }
         }
         return START_NOT_STICKY
     }
 
-    private fun startDownload() {
+    private suspend fun startDownload() {
         val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+
+        // This is now safe (runs on IO)
         SoundLoader.deleteTempFiles()
 
-        // 1. Download Playlist (M3U)
-        // Note: In batch mode, mM3uUrl is populated by the Receiver from the pre-calculated list
+        // Enqueuing is fast, but better on IO anyway
         if (SoundLoader.mM3uUrl.isNotEmpty()) {
             val request = DownloadManager.Request(Uri.parse(SoundLoader.mM3uUrl))
             request.setTitle("Downloading Track Info")
@@ -35,7 +38,6 @@ class DownloadService : Service() {
             SoundLoader.playlistDownloadId = downloadManager.enqueue(request)
         }
 
-        // 2. Download Thumbnail
         if (SoundLoader.mThumbnailUrl.isNotEmpty()) {
             val request = DownloadManager.Request(Uri.parse(SoundLoader.mThumbnailUrl))
             request.setDestinationInExternalFilesDir(this, "temp", SoundLoader.mThumbnailFilename)

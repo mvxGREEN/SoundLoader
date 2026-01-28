@@ -25,13 +25,17 @@ class DownloadReceiver : BroadcastReceiver() {
             if (totalChunks == 0) {
                 if (id == SoundLoader.playlistDownloadId) {
                     chunksDownloaded = 0
-                    CoroutineScope(Dispatchers.Main).launch {
+
+                    // FIX: Launch on IO directly, skipping Main thread for parsing
+                    CoroutineScope(Dispatchers.IO).launch {
                         val urls = SoundLoader.extractMp3Urls(m3uPath)
                         if (urls.isNotEmpty()) {
                             totalChunks = urls.size
                             SoundLoader.mMp3Urls = urls.toMutableList()
 
                             val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+
+                            // Enqueue all chunks (IO is fine for this loop)
                             urls.forEachIndexed { i, url ->
                                 val req = DownloadManager.Request(Uri.parse(url))
                                 req.setDestinationInExternalFilesDir(context, "temp", "s$i.mp3")
@@ -61,7 +65,7 @@ class DownloadReceiver : BroadcastReceiver() {
         val appContext = context.applicationContext
 
         CoroutineScope(Dispatchers.IO).launch {
-            // Build File
+            // Build File (Heavy CPU/IO)
             val path = SoundLoader.concatMp3(SoundLoader.mMp3Urls.size)
             SoundLoader.setTags(path)
             val finalPath = SoundLoader.moveFileToDocuments(path)
@@ -70,31 +74,33 @@ class DownloadReceiver : BroadcastReceiver() {
                 MediaScannerConnection.scanFile(appContext, arrayOf(finalPath), null, null)
             }
 
+            // Clean up old files (Heavy IO)
             SoundLoader.deleteTempFiles()
 
             // --- C# STYLE BATCH LOOP ---
-            withContext(Dispatchers.Main) {
-                if (SoundLoader.playlistM3uUrls.isNotEmpty()) {
-                    // 1. Pop Next
-                    SoundLoader.resetVarsForNext()
-                    SoundLoader.mM3uUrl = SoundLoader.playlistM3uUrls.removeAt(0)
+            if (SoundLoader.playlistM3uUrls.isNotEmpty()) {
+                // 1. Pop Next
+                SoundLoader.resetVarsForNext()
+                SoundLoader.mM3uUrl = SoundLoader.playlistM3uUrls.removeAt(0)
 
-                    // 2. Set Metadata for Next Track
-                    if (SoundLoader.playlistTags.isNotEmpty()) {
-                        val tag = SoundLoader.playlistTags.removeAt(0)
-                        SoundLoader.mTitle = tag["title"] ?: "Track"
-                        SoundLoader.mArtist = tag["artist"] ?: "Unknown"
-                        SoundLoader.mThumbnailUrl = tag["artwork_url"] ?: ""
-                        SoundLoader.mThumbnailFilename = if (SoundLoader.mThumbnailUrl.contains(".jpg")) "thumbnail.jpg" else "thumbnail.png"
-                    }
+                // 2. Set Metadata
+                if (SoundLoader.playlistTags.isNotEmpty()) {
+                    val tag = SoundLoader.playlistTags.removeAt(0)
+                    SoundLoader.mTitle = tag["title"] ?: "Track"
+                    SoundLoader.mArtist = tag["artist"] ?: "Unknown"
+                    SoundLoader.mThumbnailUrl = tag["artwork_url"] ?: ""
+                    SoundLoader.mThumbnailFilename = if (SoundLoader.mThumbnailUrl.contains(".jpg")) "thumbnail.jpg" else "thumbnail.png"
+                }
 
-                    // 3. Start Download Service (No scraping needed!)
-                    val nextIntent = Intent(appContext, DownloadService::class.java)
-                    nextIntent.action = "START_DOWNLOAD"
-                    appContext.startService(nextIntent)
+                // 3. Start Download Service
+                val nextIntent = Intent(appContext, DownloadService::class.java)
+                nextIntent.action = "START_DOWNLOAD"
+                // Starting service is fast, can be done from IO context
+                appContext.startService(nextIntent)
 
-                } else {
-                    // Done
+            } else {
+                // Done - Notify UI on Main Thread
+                withContext(Dispatchers.Main) {
                     val i = Intent("DOWNLOAD_FINISHED")
                     i.setPackage(appContext.packageName)
                     appContext.sendBroadcast(i)

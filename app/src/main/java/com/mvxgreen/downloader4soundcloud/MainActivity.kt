@@ -25,6 +25,8 @@ import androidx.core.content.ContextCompat
 import com.android.billingclient.api.*
 import com.bumptech.glide.Glide
 import com.google.android.gms.ads.*
+import com.google.android.gms.ads.interstitial.InterstitialAd
+import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import com.google.firebase.FirebaseApp
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.mvxgreen.downloader4soundcloud.databinding.ActivityMainBinding
@@ -37,11 +39,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var firebaseAnalytics: FirebaseAnalytics
 
+    // AdMob IDs (Test IDs provided by default)
     private val interstitialIdTest = "ca-app-pub-3940256099942544/1033173712"
     private val interstitialIdReal = "ca-app-pub-7417392682402637/8953011072"
     private val bannerIdTest = "ca-app-pub-3940256099942544/6300978111"
     private val bannerIdReal = "ca-app-pub-7417392682402637/2881991548"
+
+    // Switch variables (currently using Test IDs)
+    private val interstitialId = interstitialIdTest
     private val bannerId = bannerIdTest
+
+    private var mInterstitialAd: InterstitialAd? = null
+    private var isAdLoading = false
 
     private var fetchJob: Job? = null
     private val VALID_INPUT_REGEX = Pattern.compile("^$|((?:on\\.|m\\.|www\\.)?soundcloud\\.com\\/)", Pattern.CASE_INSENSITIVE)
@@ -100,9 +109,16 @@ class MainActivity : AppCompatActivity() {
         }
         startBackgroundPermissionChain()
 
-        initAdMob()
+        // 1. Setup Billing First
         setupBilling()
+
+        // 2. Check Subscription & Load Ads conditionally
+        val prefs = getSharedPreferences("com.mvxgreen.prefs", Context.MODE_PRIVATE)
+        val isGold = prefs.getBoolean("IS_GOLD", false)
+        checkSubscriptionAndLoadAds(isGold)
+
         setupToolbarMenu()
+        updateUpgradeIcon(isGold)
         setupListeners()
         setupWebView()
 
@@ -135,24 +151,17 @@ class MainActivity : AppCompatActivity() {
     private fun setupListeners() {
         binding.etMainInput.setOnEditorActionListener { v, _, _ -> handleInput(v.text.toString()); true }
         binding.etMainInput.addTextChangedListener(textWatcher)
+
         binding.btnClear.setOnClickListener {
-            // 1. STOP EVERYTHING
             fetchJob?.cancel()
             inputHandler.removeCallbacks(inputRunnable)
-
             binding.previewWebview.stopLoading()
             binding.previewWebview.loadUrl("about:blank")
-            //lastLoadedUrl = ""
-
-            // 2. Clear Input
             binding.etMainInput.setText("")
-
-            // 3. CRITICAL FIX: Reset SoundLoader state (clears mClientId and flags)
             SoundLoader.resetVars()
-
-            // 4. Reset UI
             updateUI(UIState.EMPTY)
         }
+
         binding.btnPaste.setOnClickListener {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = clipboard.primaryClip
@@ -232,8 +241,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun processStandardUrl(url: String) {
-        if (url.contains("/sets/")) {
+        if (url.contains("/sets/") || url.contains("/albums/")) {
             SoundLoader.isPlaylist = true
+
+            // CHECK SUBSCRIPTION
+            val prefs = getSharedPreferences("com.xxxgreen.mvx.prefs", Context.MODE_PRIVATE)
+            val isGold = prefs.getBoolean("IS_GOLD", false)
+
+            if (!isGold) {
+                SoundLoader.isPlaylist = false
+                updateUI(UIState.EMPTY)
+                binding.etMainInput.text.clear()
+                showUpgradeDialog()
+                return
+            }
+
             loadMediaData(url)
         } else {
             SoundLoader.isPlaylist = false
@@ -247,44 +269,31 @@ class MainActivity : AppCompatActivity() {
         CoroutineScope(Dispatchers.Main).launch {
             val success = SoundLoader.loadHtml(url)
             if (success) {
-                // Common: Load Image & Widget
                 if (!isDestroyed && !isFinishing) {
-                    Glide.with(this@MainActivity)
-                        .load(SoundLoader.mThumbnailUrl)
-                        .centerCrop()
-                        .into(binding.previewImg)
+                    Glide.with(this@MainActivity).load(SoundLoader.mThumbnailUrl).centerCrop().into(binding.previewImg)
                 }
 
-                // Only load WebView if we actually need to find a key or playing
                 if (SoundLoader.mPlayerUrl.isNotEmpty() && SoundLoader.mClientId.isEmpty()) {
                     binding.previewWebview.loadUrl(SoundLoader.mPlayerUrl)
                 }
 
-                // SPLIT LOGIC
                 if (SoundLoader.isPlaylist) {
                     binding.previewTitle.text = "Playlist: ${SoundLoader.mTitle}"
-                    binding.previewArtist.text = "Loading tracks…"
+                    binding.previewArtist.text = "Loading tracks..."
                     binding.dlBtn.setImageResource(R.drawable.ic_download)
 
-                    // FIX: If loadHtml found the key, fetch immediately! Don't wait for WebView.
                     if (SoundLoader.mClientId.isNotEmpty()) {
-                        Log.d("MainActivity", "Key found during scrape. Fetching playlist immediately.")
                         val fetchSuccess = withContext(Dispatchers.IO) {
                             SoundLoader.processPlaylistWithKey(SoundLoader.mClientId)
                         }
-
                         if (fetchSuccess) {
-                            binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks"
+                            binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks Ready"
                             if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
                         } else {
-                            // Fallback to WebView if direct fetch failed (rare)
                             if (SoundLoader.mPlayerUrl.isNotEmpty()) binding.previewWebview.loadUrl(SoundLoader.mPlayerUrl)
                         }
                     }
-                    // Else: Stay in LOADING state. The WebView interceptor will handle it.
-
                 } else {
-                    // SINGLE TRACK
                     binding.previewTitle.text = SoundLoader.mTitle
                     binding.previewArtist.text = SoundLoader.mArtist
                     if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
@@ -352,11 +361,9 @@ class MainActivity : AppCompatActivity() {
 
                     CoroutineScope(Dispatchers.Main).launch {
                         if (SoundLoader.isPlaylist) {
-                            // Fetch Tracks
                             val success = SoundLoader.processPlaylistWithKey(id)
                             if (success) {
-                                binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks"
-                                // CRITICAL FIX: Trigger Shared Download HERE for playlists
+                                binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks Ready"
                                 if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
                             } else {
                                 Toast.makeText(this@MainActivity, "Playlist fetch failed", Toast.LENGTH_SHORT).show()
@@ -365,7 +372,7 @@ class MainActivity : AppCompatActivity() {
                         } else if (SoundLoader.mStreamUrl.isNotEmpty()) {
                             val fullUrl = "${SoundLoader.mStreamUrl}?client_id=$id"
                             SoundLoader.loadJson(fullUrl)
-                            // Note: Single tracks trigger in loadMediaData, but this ensures M3U is ready
+                            if (SoundLoader.isShared) startDownload()
                         }
                     }
                 }
@@ -389,14 +396,14 @@ class MainActivity : AppCompatActivity() {
                 binding.loadingLayout.visibility = View.INVISIBLE
                 binding.previewCard.visibility = View.INVISIBLE
                 binding.downloaderCard.visibility = View.INVISIBLE
-                binding.overlayDownloading.visibility = View.GONE
+                binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
             }
             UIState.LOADING -> {
                 binding.loadingLayout.alpha = 1.0f
                 binding.loadingLayout.visibility = View.VISIBLE
                 binding.previewCard.visibility = View.INVISIBLE
                 binding.downloaderCard.visibility = View.INVISIBLE
-                binding.overlayDownloading.visibility = View.GONE
+                binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
                 binding.etMainInput.isEnabled = false
                 binding.btnPaste.isEnabled = false
                 binding.btnPaste.alpha = 0.5f
@@ -407,9 +414,12 @@ class MainActivity : AppCompatActivity() {
                 binding.previewCard.visibility = View.VISIBLE
                 binding.downloaderCard.alpha = 1.0f
                 binding.downloaderCard.visibility = View.VISIBLE
-                binding.overlayDownloading.visibility = View.GONE
+                binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
                 binding.dlBtn.visibility = View.VISIBLE
                 binding.finishBtn.visibility = View.GONE
+
+                // Show Interstitial if not Gold
+                showInterstitial()
             }
             UIState.DOWNLOADING -> {
                 binding.loadingLayout.visibility = View.INVISIBLE
@@ -422,7 +432,7 @@ class MainActivity : AppCompatActivity() {
                 binding.btnPaste.alpha = 0.5f
             }
             UIState.FINISHED -> {
-                binding.overlayDownloading.visibility = View.GONE
+                binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
                 binding.finishBtn.visibility = View.VISIBLE
                 binding.finishBtn.animate().alpha(1.0f)
                 incrementSuccessfulRuns()
@@ -430,19 +440,81 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ... (Keep incrementSuccessfulRuns, showRateDialog, showUpgradeDialog, setupBilling, etc.) ...
+    // --- ADS & BILLING ---
+
+    private fun checkSubscriptionAndLoadAds(isGold: Boolean) {
+        if (!isGold) {
+            // Load Ads if NOT gold
+            initAdMob()
+        } else {
+            // Hide Ads if Gold
+            binding.adContainer.removeAllViews()
+            binding.adContainer.visibility = View.INVISIBLE // Keeps layout space
+            mInterstitialAd = null
+        }
+    }
+
+    private fun initAdMob() {
+        MobileAds.initialize(this) {}
+        binding.adContainer.visibility = View.VISIBLE // Ensure visible
+        binding.adContainer.removeAllViews()
+
+        val adView = AdView(this)
+        adView.adUnitId = bannerId
+        adView.setAdSize(getAdSize())
+
+        binding.adContainer.addView(adView)
+        adView.loadAd(AdRequest.Builder().build())
+
+        loadInterstitialAd()
+    }
+
+    private fun getAdSize(): AdSize {
+        val display = windowManager.defaultDisplay
+        val outMetrics = android.util.DisplayMetrics()
+        display.getMetrics(outMetrics)
+        val density = outMetrics.density
+        var adWidthPixels = binding.adContainer.width.toFloat()
+        if (adWidthPixels == 0f) adWidthPixels = outMetrics.widthPixels.toFloat()
+        val adWidth = (adWidthPixels / density).toInt()
+        return AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(this, adWidth)
+    }
+
+    private fun loadInterstitialAd() {
+        if (isAdLoading || mInterstitialAd != null) return
+        isAdLoading = true
+        val adRequest = AdRequest.Builder().build()
+        InterstitialAd.load(this, interstitialId, adRequest, object : InterstitialAdLoadCallback() {
+            override fun onAdFailedToLoad(adError: LoadAdError) { mInterstitialAd = null; isAdLoading = false }
+            override fun onAdLoaded(interstitialAd: InterstitialAd) {
+                mInterstitialAd = interstitialAd
+                isAdLoading = false
+                mInterstitialAd?.fullScreenContentCallback = object : FullScreenContentCallback() {
+                    override fun onAdDismissedFullScreenContent() { mInterstitialAd = null; loadInterstitialAd() }
+                    override fun onAdFailedToShowFullScreenContent(adError: AdError) { mInterstitialAd = null }
+                    override fun onAdShowedFullScreenContent() { mInterstitialAd = null }
+                }
+            }
+        })
+    }
+
+    private fun showInterstitial() {
+        val prefs = getSharedPreferences("com.xxxgreen.mvx.prefs", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("IS_GOLD", false)) {
+            mInterstitialAd?.show(this) ?: loadInterstitialAd()
+        }
+    }
+
+    // --- DIALOGS & BILLING ---
 
     private fun incrementSuccessfulRuns() {
         val prefs = getSharedPreferences("com.xxxgreen.mvx.prefs", Context.MODE_PRIVATE)
         val currentCount = prefs.getInt("SUCCESS_RUNS", 0) + 1
         prefs.edit().putInt("SUCCESS_RUNS", currentCount).apply()
         if (currentCount > 0 && currentCount % 6 == 0) {
-            val cycle = currentCount / 6
-            if (cycle % 2 != 0) {
+            if ((currentCount / 6) % 2 != 0) {
                 if (!prefs.getBoolean("IS_GOLD", false)) showUpgradeDialog()
-            } else {
-                showRateDialog()
-            }
+            } else showRateDialog()
         }
     }
 
@@ -503,24 +575,33 @@ class MainActivity : AppCompatActivity() {
             }
         } else if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) saveGoldStatus(true)
     }
+
     private fun saveGoldStatus(isGold: Boolean) {
         val prefs = getSharedPreferences("com.xxxgreen.mvx.prefs", Context.MODE_PRIVATE)
         prefs.edit().putBoolean("IS_GOLD", isGold).apply()
         checkSubscriptionAndLoadAds(isGold)
+        runOnUiThread { updateUpgradeIcon(isGold) }
     }
-    private fun checkSubscriptionAndLoadAds(isGold: Boolean) {
-        if (!isGold) initAdMob() else { binding.adContainer.removeAllViews(); binding.adContainer.visibility = View.INVISIBLE }
-    }
+
     private fun launchBillingFlow() {
         if (productDetails != null) {
             val params = BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(productDetails!!).setOfferToken(productDetails!!.subscriptionOfferDetails?.get(0)?.offerToken ?: "").build())).build()
             billingClient.launchBillingFlow(this, params)
         }
     }
-    private fun initAdMob() {
-        MobileAds.initialize(this) {}
-        val adView = AdView(this); adView.setAdSize(AdSize.BANNER); adView.adUnitId = bannerId
-        binding.adContainer.addView(adView); adView.loadAd(AdRequest.Builder().build())
+
+    private fun updateUpgradeIcon(isGold: Boolean) {
+        val upgradeItem = binding.toolbar.menu.findItem(R.id.action_upgrade)
+        if (upgradeItem != null) {
+            if (isGold) {
+                upgradeItem.icon?.setTint(Color.parseColor("#FFD700"))
+                upgradeItem.isEnabled = false
+            } else {
+                upgradeItem.icon?.setTintList(null)
+                upgradeItem.isEnabled = true
+            }
+        }
     }
+
     override fun onDestroy() { super.onDestroy(); unregisterReceiver(downloadReceiver); unregisterReceiver(finishReceiver) }
 }
