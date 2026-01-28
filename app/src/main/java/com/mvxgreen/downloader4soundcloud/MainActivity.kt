@@ -22,17 +22,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import com.android.billingclient.api.AcknowledgePurchaseParams
-import com.android.billingclient.api.BillingClient
-import com.android.billingclient.api.BillingClientStateListener
-import com.android.billingclient.api.BillingFlowParams
-import com.android.billingclient.api.BillingResult
-import com.android.billingclient.api.PendingPurchasesParams
-import com.android.billingclient.api.ProductDetails
-import com.android.billingclient.api.Purchase
-import com.android.billingclient.api.PurchasesUpdatedListener
-import com.android.billingclient.api.QueryProductDetailsParams
-import com.android.billingclient.api.QueryPurchasesParams
+import com.android.billingclient.api.*
 import com.bumptech.glide.Glide
 import com.google.android.gms.ads.*
 import com.google.firebase.FirebaseApp
@@ -42,83 +32,49 @@ import com.mvxgreen.downloader4soundcloud.databinding.DialogRateBinding
 import com.mvxgreen.downloader4soundcloud.databinding.DialogUpgradeBinding
 import kotlinx.coroutines.*
 import java.util.regex.Pattern
-import kotlin.toString
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var firebaseAnalytics: FirebaseAnalytics
 
-    private val interstitialIdTest = "ca-app-pub-3940256099942544/1033173712" // Test
-    private val interstitialIdReal = "ca-app-pub-7417392682402637/8953011072" // Real
-    private val interstitialId = interstitialIdTest
-
-    private val bannerIdTest = "ca-app-pub-3940256099942544/6300978111" // Test
-    private val bannerIdReal = "ca-app-pub-7417392682402637/2881991548" // Real
+    private val interstitialIdTest = "ca-app-pub-3940256099942544/1033173712"
+    private val interstitialIdReal = "ca-app-pub-7417392682402637/8953011072"
+    private val bannerIdTest = "ca-app-pub-3940256099942544/6300978111"
+    private val bannerIdReal = "ca-app-pub-7417392682402637/2881991548"
     private val bannerId = bannerIdTest
 
-    // Coroutine Job for scraping
     private var fetchJob: Job? = null
-
-    // --- UPDATED REGEX ---
-    // 1. Validation: Checks if the final result looks like a SoundCloud link
     private val VALID_INPUT_REGEX = Pattern.compile("^$|((?:on\\.|m\\.|www\\.)?soundcloud\\.com\\/)", Pattern.CASE_INSENSITIVE)
-
-    // 2. Extraction: Scans messy text to find the http/https URL starting with soundcloud domains
-    // Matches: https:// + optional subdomain + soundcloud.com + / + non-whitespace characters
-    private val EXTRACT_URL_REGEX = Pattern.compile(
-        "(https?://(?:on\\.|www\\.|m\\.)?soundcloud\\.com/[^\\s]*)",
-        Pattern.CASE_INSENSITIVE
-    )
+    private val EXTRACT_URL_REGEX = Pattern.compile("(https?://(?:on\\.|www\\.|m\\.)?soundcloud\\.com/[^\\s]*)", Pattern.CASE_INSENSITIVE)
 
     private lateinit var requestNotificationLauncher: androidx.activity.result.ActivityResultLauncher<String>
-
-    // Billing Variables
     private lateinit var billingClient: BillingClient
     private var productDetails: ProductDetails? = null
     private val PRODUCT_ID = "remove_ads_subs"
 
     private val inputHandler = Handler(Looper.getMainLooper())
-    private var lastLoadedUrl = ""
-
-    // Debounce Runnable: Waits 1 second after typing stops
     private val inputRunnable = Runnable {
         val text = binding.etMainInput.text.toString()
-        if (VALID_INPUT_REGEX.matcher(text).find() && text.isNotEmpty()) {
-            handleInput(text)
-        }
+        if (VALID_INPUT_REGEX.matcher(text).find() && text.isNotEmpty()) handleInput(text)
     }
 
     private val textWatcher = object : TextWatcher {
         override fun afterTextChanged(s: Editable?) {
-            // Show/Hide Clear Button (if you have one, reusing paste_button logic for now or custom)
             binding.btnClear.visibility = if (s.isNullOrEmpty()) View.INVISIBLE else View.VISIBLE
-
-            // 1. Cancel previous pending search
             inputHandler.removeCallbacks(inputRunnable)
-
-            if (s.isNullOrEmpty()) {
-                updateUI(UIState.EMPTY)
-            } else {
-                // 2. Schedule load in 1 second
-                inputHandler.postDelayed(inputRunnable, 1000)
-            }
+            if (s.isNullOrEmpty()) updateUI(UIState.EMPTY) else inputHandler.postDelayed(inputRunnable, 1000)
         }
         override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
         override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
     }
 
-    enum class UIState {
-        EMPTY, LOADING, PREVIEW, DOWNLOADING, FINISHED
-    }
+    enum class UIState { EMPTY, LOADING, PREVIEW, DOWNLOADING, FINISHED }
 
-    // Receivers
     private val downloadReceiver = DownloadReceiver()
     private val finishReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             updateUI(UIState.FINISHED)
             Toast.makeText(context, "Saved to Documents!", Toast.LENGTH_SHORT).show()
-
-            // If shared, auto-close after a delay
             if (SoundLoader.isShared) {
                 SoundLoader.isShared = false
                 Handler(Looper.getMainLooper()).postDelayed({ finish() }, 1500)
@@ -128,31 +84,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Initialize State
         SoundLoader.resetVars()
         SoundLoader.isShared = false
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Init Services
         FirebaseApp.initializeApp(this)
         firebaseAnalytics = FirebaseAnalytics.getInstance(this)
         SoundLoader.prepareFileDirs()
 
-        // init permissions
-        requestNotificationLauncher = registerForActivityResult(
-            androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-        ) { isGranted: Boolean ->
-            // This block runs immediately after the user clicks Allow/Deny
-            if (isGranted) {
-                Log.d("MainActivity", "Notifications granted")
-            } else {
-                Toast.makeText(this, "Notifications are recommended for background downloads", Toast.LENGTH_SHORT).show()
-            }
-
-            // --- CHAIN REACTION: NOW REQUEST BATTERY ---
+        requestNotificationLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { isGranted ->
+            if (!isGranted) Toast.makeText(this, "Notifications are recommended", Toast.LENGTH_SHORT).show()
             requestBatteryOptimization()
         }
         startBackgroundPermissionChain()
@@ -163,19 +106,16 @@ class MainActivity : AppCompatActivity() {
         setupListeners()
         setupWebView()
 
-        // Register Receivers
         ContextCompat.registerReceiver(this, downloadReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), ContextCompat.RECEIVER_EXPORTED)
         ContextCompat.registerReceiver(this, finishReceiver, IntentFilter("DOWNLOAD_FINISHED"), ContextCompat.RECEIVER_NOT_EXPORTED)
 
-        // Check Intent (Sharing)
         updateUI(UIState.EMPTY)
         checkIntent(intent)
     }
 
-    // Since launchMode is singleInstance, new shares will call this if app is already open
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
-        setIntent(intent) // Update the activity's intent reference
+        setIntent(intent)
         checkIntent(intent)
     }
 
@@ -183,231 +123,119 @@ class MainActivity : AppCompatActivity() {
         if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
             val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
             if (sharedText != null) {
-                Log.d("MainActivity", "Received Shared Intent: $sharedText")
-
                 SoundLoader.isShared = true
-
                 binding.etMainInput.removeTextChangedListener(textWatcher)
                 binding.etMainInput.setText(sharedText)
                 binding.etMainInput.addTextChangedListener(textWatcher)
-
-                // 4. Manual Trigger (Only one download starts)
                 handleInput(sharedText)
             }
         }
     }
 
     private fun setupListeners() {
-        // 1. Editor Action (Enter Key)
-        binding.etMainInput.setOnEditorActionListener { v, _, _ ->
-            handleInput(v.text.toString())
-            true
-        }
-
-        // 2. Text Watcher (Debounce)
+        binding.etMainInput.setOnEditorActionListener { v, _, _ -> handleInput(v.text.toString()); true }
         binding.etMainInput.addTextChangedListener(textWatcher)
-
-        // Clear Button (UPDATED)
         binding.btnClear.setOnClickListener {
             // 1. STOP EVERYTHING
-            fetchJob?.cancel()          // Stops the scraping/loading (Coroutines)
-            //SoundLoader.cancelBatch(this) // Stops the downloading (Service/Receiver)
-            inputHandler.removeCallbacks(inputRunnable) // Stops pending debounce
+            fetchJob?.cancel()
+            inputHandler.removeCallbacks(inputRunnable)
 
             binding.previewWebview.stopLoading()
-            binding.previewWebview.loadUrl("about:blank") // Optional: clear the visual state
-            lastLoadedUrl = ""
-            //lastLoadedMediaId = ""
+            binding.previewWebview.loadUrl("about:blank")
+            //lastLoadedUrl = ""
 
             // 2. Clear Input
             binding.etMainInput.setText("")
 
-            // 3. Reset UI
+            // 3. CRITICAL FIX: Reset SoundLoader state (clears mClientId and flags)
+            SoundLoader.resetVars()
+
+            // 4. Reset UI
             updateUI(UIState.EMPTY)
-
-            //Toast.makeText(this, "Cancelled", Toast.LENGTH_SHORT).show()
         }
-
-        // 3. Paste Button
         binding.btnPaste.setOnClickListener {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = clipboard.primaryClip
             if (clip != null && clip.itemCount > 0) {
                 val text = clip.getItemAt(0).text.toString()
-
                 binding.etMainInput.setText(text)
-
-                // Cancel debounce and force immediate load
                 inputHandler.removeCallbacks(inputRunnable)
                 handleInput(text)
             }
         }
-
-        // 4. Download Button
-        binding.dlBtn.setOnClickListener {
-            startDownloadService()
-        }
-    }
-
-    private fun updateBackgroundMenuVisibility() {
-        val item = binding.toolbar.menu.findItem(R.id.action_enable_background) ?: return
-        // Show item ONLY if permissions are missing
-        item.isVisible = !hasBackgroundPermissions()
+        binding.dlBtn.setOnClickListener { startDownloadService() }
     }
 
     private fun startBackgroundPermissionChain() {
-        // STEP 1: Check Notifications (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                // Request Notifs -> The 'requestNotificationLauncher' callback will handle Step 2
                 requestNotificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 return
             }
         }
-
-        // If we already have notifications (or are on Android < 13), jump straight to Step 2
         requestBatteryOptimization()
     }
 
     @SuppressLint("BatteryLife")
     private fun requestBatteryOptimization() {
-        // STEP 2: Check Battery Optimization (Android 6+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
             if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
                 try {
-                    val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                    intent.data = Uri.parse("package:$packageName")
+                    val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
                     startActivity(intent)
-                } catch (e: Exception) {
-                    Toast.makeText(this, "Could not open background settings", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                //Toast.makeText(this, "Background setup complete!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {}
             }
         }
-    }
-
-    private fun hasBackgroundPermissions(): Boolean {
-        // 1. Check Notification Permission (Android 13+)
-        val notificationGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true // Not required below Android 13
-        }
-
-        // 2. Check Battery Optimization (Android 6+)
-        val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-        val batteryIgnored = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            powerManager.isIgnoringBatteryOptimizations(packageName)
-        } else {
-            true // Not required below Android 6
-        }
-
-        return notificationGranted && batteryIgnored
     }
 
     private fun setupToolbarMenu() {
         binding.toolbar.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
-                R.id.action_upgrade -> {
-                    showUpgradeDialog()
-                    true
-                }
-                R.id.action_privacy -> {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://mobileapps.green/privacy-policy"))
-                    startActivity(intent)
-                    true
-                }
-                R.id.action_about -> {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://mobileapps.green/"))
-                    startActivity(intent)
-                    true
-                }
-                // NEW CASE
-                R.id.action_enable_background -> {
-                    startBackgroundPermissionChain()
-                    true
-                }
+                R.id.action_upgrade -> { showUpgradeDialog(); true }
+                R.id.action_privacy -> { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://mobileapps.green/privacy-policy"))); true }
+                R.id.action_about -> { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://mobileapps.green/"))); true }
+                R.id.action_enable_background -> { startBackgroundPermissionChain(); true }
                 else -> false
             }
         }
     }
 
-    private fun logInputEvent(eventName: String) {
-        val inputValue = binding.etMainInput.text.toString()
-        val bundle = Bundle().apply {
-            putString("input_value", inputValue)
-        }
-        firebaseAnalytics.logEvent(eventName, bundle)
-        Log.d("Analytics", "Logged event: $eventName with value: $inputValue")
-    }
-
     private fun handleInput(rawInput: String) {
-        logInputEvent("soundloader_input")
-
-        // 1. Cancel pending jobs & debounce
         inputHandler.removeCallbacksAndMessages(null)
         fetchJob?.cancel()
 
-        // 2. Hide Keyboard
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(binding.etMainInput.windowToken, 0)
         binding.etMainInput.clearFocus()
 
         var input = rawInput
-
-        // 3. EXTRACTION LOGIC (New)
-        // Scan the input for a valid URL substring (e.g., extracting from "Listen to... https://...")
         val matcher = EXTRACT_URL_REGEX.matcher(rawInput)
-        if (matcher.find()) {
-            input = matcher.group(1) ?: rawInput // We found a URL, replace input with just the URL
-            Log.d("MainActivity", "Extracted URL from text: $input")
-        } else {
-            // Fallback: Trim whitespace for manual inputs like "soundcloud.com/artist/track"
-            input = input.trim()
-        }
+        if (matcher.find()) input = matcher.group(1) ?: rawInput else input = input.trim()
 
-        // 4. Protocol Cleanup (for manual inputs missing https://)
         if (!input.startsWith("http")) {
-            if (input.startsWith("soundcloud.com") || input.startsWith("on.soundcloud.com")) {
-                input = "https://$input"
-            }
+            if (input.startsWith("soundcloud.com") || input.startsWith("on.soundcloud.com")) input = "https://$input"
         }
 
-        // 5. Final Validation
         if (!VALID_INPUT_REGEX.matcher(input).find()) {
             Toast.makeText(this, "Invalid URL", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // 6. Instant Feedback
         updateUI(UIState.LOADING)
 
-        // 7. Delayed Processing
-        val finalUrl = input // Capture for closure
+        val finalUrl = input
         Handler(Looper.getMainLooper()).postDelayed({
-            if (finalUrl.contains("on.soundcloud.com")) {
-                Log.d("MainActivity", "Shortlink detected: $finalUrl")
-                binding.previewWebview.loadUrl(finalUrl)
-            } else {
-                processStandardUrl(finalUrl)
-            }
+            if (finalUrl.contains("on.soundcloud.com")) binding.previewWebview.loadUrl(finalUrl)
+            else processStandardUrl(finalUrl)
         }, 300)
     }
 
-    // Called when we have a resolved, standard SoundCloud URL
     private fun processStandardUrl(url: String) {
-        Log.d("MainActivity", "Processing Standard URL: $url")
-
         if (url.contains("/sets/")) {
-            // It's a Playlist or Album
-            Log.d("MainActivity", "Detected Playlist/Album")
             SoundLoader.isPlaylist = true
             loadMediaData(url)
         } else {
-            // It's a Track
-            Log.d("MainActivity", "Detected Track")
             SoundLoader.isPlaylist = false
             loadMediaData(url)
         }
@@ -421,25 +249,44 @@ class MainActivity : AppCompatActivity() {
             if (success) {
                 // Common: Load Image & Widget
                 if (!isDestroyed && !isFinishing) {
-                    Glide.with(this@MainActivity).load(SoundLoader.mThumbnailUrl).centerCrop().into(binding.previewImg)
+                    Glide.with(this@MainActivity)
+                        .load(SoundLoader.mThumbnailUrl)
+                        .centerCrop()
+                        .into(binding.previewImg)
                 }
-                if (SoundLoader.mPlayerUrl.isNotEmpty()) {
+
+                // Only load WebView if we actually need to find a key or playing
+                if (SoundLoader.mPlayerUrl.isNotEmpty() && SoundLoader.mClientId.isEmpty()) {
                     binding.previewWebview.loadUrl(SoundLoader.mPlayerUrl)
                 }
 
-                // SPLIT LOGIC:
+                // SPLIT LOGIC
                 if (SoundLoader.isPlaylist) {
-                    // 1. PLAYLIST: Update info but WAIT for batch fetch
                     binding.previewTitle.text = "Playlist: ${SoundLoader.mTitle}"
-                    binding.previewArtist.text = "Loading tracks..."
+                    binding.previewArtist.text = "Loading tracks…"
                     binding.dlBtn.setImageResource(R.drawable.ic_download)
 
-                    // Stay in LOADING state. The WebView callback will trigger updateUI(PREVIEW).
+                    // FIX: If loadHtml found the key, fetch immediately! Don't wait for WebView.
+                    if (SoundLoader.mClientId.isNotEmpty()) {
+                        Log.d("MainActivity", "Key found during scrape. Fetching playlist immediately.")
+                        val fetchSuccess = withContext(Dispatchers.IO) {
+                            SoundLoader.processPlaylistWithKey(SoundLoader.mClientId)
+                        }
+
+                        if (fetchSuccess) {
+                            binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks"
+                            if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
+                        } else {
+                            // Fallback to WebView if direct fetch failed (rare)
+                            if (SoundLoader.mPlayerUrl.isNotEmpty()) binding.previewWebview.loadUrl(SoundLoader.mPlayerUrl)
+                        }
+                    }
+                    // Else: Stay in LOADING state. The WebView interceptor will handle it.
+
                 } else {
-                    // 2. SINGLE TRACK: Ready immediately
+                    // SINGLE TRACK
                     binding.previewTitle.text = SoundLoader.mTitle
                     binding.previewArtist.text = SoundLoader.mArtist
-
                     if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
                 }
             } else {
@@ -508,8 +355,8 @@ class MainActivity : AppCompatActivity() {
                             // Fetch Tracks
                             val success = SoundLoader.processPlaylistWithKey(id)
                             if (success) {
-                                // CRITICAL FIX: Now update UI to PREVIEW
-                                binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks Ready"
+                                binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks"
+                                // CRITICAL FIX: Trigger Shared Download HERE for playlists
                                 if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
                             } else {
                                 Toast.makeText(this@MainActivity, "Playlist fetch failed", Toast.LENGTH_SHORT).show()
@@ -518,7 +365,7 @@ class MainActivity : AppCompatActivity() {
                         } else if (SoundLoader.mStreamUrl.isNotEmpty()) {
                             val fullUrl = "${SoundLoader.mStreamUrl}?client_id=$id"
                             SoundLoader.loadJson(fullUrl)
-                            if (SoundLoader.isShared) startDownload()
+                            // Note: Single tracks trigger in loadMediaData, but this ensures M3U is ready
                         }
                     }
                 }
@@ -530,9 +377,6 @@ class MainActivity : AppCompatActivity() {
     private fun startDownloadService() {
         updateUI(UIState.DOWNLOADING)
         startDownload()
-        //val intent = Intent(this, DownloadService::class.java)
-        //intent.action = "START_DOWNLOAD"
-        //startService(intent)
     }
 
     private fun updateUI(state: UIState) {
@@ -586,27 +430,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ... (Keep incrementSuccessfulRuns, showRateDialog, showUpgradeDialog, setupBilling, etc.) ...
+
     private fun incrementSuccessfulRuns() {
         val prefs = getSharedPreferences("com.xxxgreen.mvx.prefs", Context.MODE_PRIVATE)
-
-        // 1. Increment Counter
         val currentCount = prefs.getInt("SUCCESS_RUNS", 0) + 1
         prefs.edit().putInt("SUCCESS_RUNS", currentCount).apply()
-
-        Log.d("MainActivity", "Successful Runs: $currentCount")
-
-        // 2. Check if multiple of 6
         if (currentCount > 0 && currentCount % 6 == 0) {
             val cycle = currentCount / 6
-
-            // Odd cycles (1, 3, 5... -> runs 6, 18, 30): Show Upgrade
-            // Even cycles (2, 4, 6... -> runs 12, 24, 36): Show Rate
             if (cycle % 2 != 0) {
-                // Check if user is already Gold before annoying them with Upgrade dialog
-                val isGold = prefs.getBoolean("IS_GOLD", false)
-                if (!isGold) {
-                    showUpgradeDialog()
-                }
+                if (!prefs.getBoolean("IS_GOLD", false)) showUpgradeDialog()
             } else {
                 showRateDialog()
             }
@@ -614,205 +447,80 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showRateDialog() {
-        // Inflate the Rate Dialog layout
         val rateBinding = DialogRateBinding.inflate(layoutInflater)
-
-        val builder = AlertDialog.Builder(this)
-            .setView(rateBinding.root)
-            .setCancelable(true)
-
-        val dialog = builder.create()
+        val dialog = AlertDialog.Builder(this).setView(rateBinding.root).create()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-        // "Nah" Button -> Dismiss
-        rateBinding.btnNah.setOnClickListener {
-            dialog.dismiss()
-        }
-
-        // "Rate" Button (ID is btnUpgrade in your xml) -> Open Play Store
+        rateBinding.btnNah.setOnClickListener { dialog.dismiss() }
         rateBinding.btnRate.setOnClickListener {
             dialog.dismiss()
-            try {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")))
-            } catch (e: ActivityNotFoundException) {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")))
-            }
+            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName"))) }
+            catch (e: ActivityNotFoundException) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName"))) }
         }
-
         dialog.show()
     }
 
     private fun showUpgradeDialog() {
-        // Inflate the Dialog layout using Binding
         val dialogBinding = DialogUpgradeBinding.inflate(layoutInflater)
-
-        val builder = AlertDialog.Builder(this)
-            .setView(dialogBinding.root)
-            .setCancelable(true)
-
-        val dialog = builder.create()
+        val dialog = AlertDialog.Builder(this).setView(dialogBinding.root).create()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-        // Bind Dialog Listeners directly
-        //dialogBinding.btnClose.setOnClickListener { dialog.dismiss() }
         dialogBinding.btnNah.setOnClickListener { dialog.dismiss() }
-        dialogBinding.btnUpgrade.setOnClickListener {
-            dialog.dismiss()
-            launchBillingFlow()
-        }
-
+        dialogBinding.btnUpgrade.setOnClickListener { dialog.dismiss(); launchBillingFlow() }
         dialog.show()
     }
 
-    // --- BILLING LOGIC ---
-
     private fun setupBilling() {
-        billingClient = BillingClient.newBuilder(this)
-            .setListener(purchasesUpdatedListener)
-            .enablePendingPurchases(
-                PendingPurchasesParams.newBuilder()
-                    .enableOneTimeProducts()
-                    .build()
-            )
-            .build()
+        billingClient = BillingClient.newBuilder(this).setListener(purchasesUpdatedListener).enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build()).build()
         startBillingConnection()
     }
-
     private fun startBillingConnection() {
         billingClient.startConnection(object : BillingClientStateListener {
-            override fun onBillingSetupFinished(billingResult: BillingResult) {
-                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                    queryProductDetails()
-                    queryActivePurchases()
-                }
-            }
-            override fun onBillingServiceDisconnected() { }
+            override fun onBillingSetupFinished(billingResult: BillingResult) { if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) { queryProductDetails(); queryActivePurchases() } }
+            override fun onBillingServiceDisconnected() {}
         })
     }
-
     private fun queryProductDetails() {
-        val productList = listOf(
-            QueryProductDetailsParams.Product.newBuilder()
-                .setProductId(PRODUCT_ID)
-                .setProductType(BillingClient.ProductType.SUBS)
-                .build()
-        )
-        billingClient.queryProductDetailsAsync(
-            QueryProductDetailsParams.newBuilder().setProductList(productList).build()
-        ) { billingResult, detailsResult ->
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK
-                && detailsResult.productDetailsList.isNotEmpty()
-            ) {
-                productDetails = detailsResult.productDetailsList[0]
-            }
+        val productList = listOf(QueryProductDetailsParams.Product.newBuilder().setProductId(PRODUCT_ID).setProductType(BillingClient.ProductType.SUBS).build())
+        billingClient.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder().setProductList(productList).build()) { result, details ->
+            if (result.responseCode == BillingClient.BillingResponseCode.OK && details.productDetailsList.isNotEmpty()) productDetails = details.productDetailsList[0]
         }
     }
-
     private fun queryActivePurchases() {
-        val params = QueryPurchasesParams.newBuilder()
-            .setProductType(BillingClient.ProductType.SUBS)
-            .build()
-        billingClient.queryPurchasesAsync(params) { billingResult, purchases ->
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+        billingClient.queryPurchasesAsync(QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build()) { result, purchases ->
+            if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                 var isGold = false
-                for (purchase in purchases) {
-                    if (purchase.products.contains(PRODUCT_ID) && purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
-                        isGold = true
-                        if (!purchase.isAcknowledged) handlePurchase(purchase)
-                    }
-                }
+                for (purchase in purchases) if (purchase.products.contains(PRODUCT_ID) && purchase.purchaseState == Purchase.PurchaseState.PURCHASED) isGold = true
                 saveGoldStatus(isGold)
             }
         }
     }
-
-    private val purchasesUpdatedListener = PurchasesUpdatedListener { billingResult, purchases ->
-        if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
-            for (purchase in purchases) handlePurchase(purchase)
-        }
+    private val purchasesUpdatedListener = PurchasesUpdatedListener { result, purchases ->
+        if (result.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) for (p in purchases) handlePurchase(p)
     }
-
     private fun handlePurchase(purchase: Purchase) {
-        if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
-            if (!purchase.isAcknowledged) {
-                val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
-                    .setPurchaseToken(purchase.purchaseToken)
-                    .build()
-
-                billingClient.acknowledgePurchase(acknowledgePurchaseParams) { billingResult ->
-                    if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                        runOnUiThread {
-                            Toast.makeText(this, "Thank you for your support <3", Toast.LENGTH_SHORT).show()
-                            saveGoldStatus(true)
-                            recreate()
-                        }
-                    }
-                }
-            } else {
-                saveGoldStatus(true)
+        if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED && !purchase.isAcknowledged) {
+            billingClient.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build()) {
+                if (it.responseCode == BillingClient.BillingResponseCode.OK) runOnUiThread { Toast.makeText(this, "Thank you!", Toast.LENGTH_SHORT).show(); saveGoldStatus(true); recreate() }
             }
-        }
+        } else if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) saveGoldStatus(true)
     }
-
     private fun saveGoldStatus(isGold: Boolean) {
         val prefs = getSharedPreferences("com.xxxgreen.mvx.prefs", Context.MODE_PRIVATE)
         prefs.edit().putBoolean("IS_GOLD", isGold).apply()
         checkSubscriptionAndLoadAds(isGold)
-        runOnUiThread { updateUpgradeIcon(isGold) }
     }
-
     private fun checkSubscriptionAndLoadAds(isGold: Boolean) {
-        if (!isGold) {
-            initAdMob()
-        } else {
-            binding.adContainer.removeAllViews()
-            binding.adContainer.visibility = View.INVISIBLE
-        }
+        if (!isGold) initAdMob() else { binding.adContainer.removeAllViews(); binding.adContainer.visibility = View.INVISIBLE }
     }
-
     private fun launchBillingFlow() {
         if (productDetails != null) {
-            val offerToken = productDetails!!.subscriptionOfferDetails?.get(0)?.offerToken ?: ""
-            val productDetailsParamsList = listOf(
-                BillingFlowParams.ProductDetailsParams.newBuilder()
-                    .setProductDetails(productDetails!!)
-                    .setOfferToken(offerToken)
-                    .build()
-            )
-            val billingFlowParams = BillingFlowParams.newBuilder()
-                .setProductDetailsParamsList(productDetailsParamsList)
-                .build()
-            billingClient.launchBillingFlow(this, billingFlowParams)
-        } else {
-            Toast.makeText(this, "Billing not ready yet.", Toast.LENGTH_SHORT).show()
+            val params = BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(productDetails!!).setOfferToken(productDetails!!.subscriptionOfferDetails?.get(0)?.offerToken ?: "").build())).build()
+            billingClient.launchBillingFlow(this, params)
         }
     }
-
-    private fun updateUpgradeIcon(isGold: Boolean) {
-        val upgradeItem = binding.toolbar.menu.findItem(R.id.action_upgrade)
-        if (upgradeItem != null) {
-            if (isGold) {
-                upgradeItem.icon?.setTint(Color.parseColor("#FFD700"))
-                upgradeItem.isEnabled = false
-            } else {
-                upgradeItem.icon?.setTintList(null)
-                upgradeItem.isEnabled = true
-            }
-        }
-    }
-
     private fun initAdMob() {
         MobileAds.initialize(this) {}
-        val adView = AdView(this)
-        adView.setAdSize(AdSize.BANNER)
-        adView.adUnitId = bannerId
-        binding.adContainer.addView(adView)
-        adView.loadAd(AdRequest.Builder().build())
+        val adView = AdView(this); adView.setAdSize(AdSize.BANNER); adView.adUnitId = bannerId
+        binding.adContainer.addView(adView); adView.loadAd(AdRequest.Builder().build())
     }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        unregisterReceiver(downloadReceiver)
-        unregisterReceiver(finishReceiver)
-    }
+    override fun onDestroy() { super.onDestroy(); unregisterReceiver(downloadReceiver); unregisterReceiver(finishReceiver) }
 }

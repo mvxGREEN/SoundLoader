@@ -138,7 +138,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:background="#99000000"
-                android:visibility="gone">
+                android:visibility="invisible">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -238,7 +238,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:src="@drawable/ic_check"
                     app:tint="?attr/colorAccent"
-                    android:visibility="gone"
+                    android:visibility="invisible"
                     android:contentDescription="Finished" />
             </FrameLayout>
 
