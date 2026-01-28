@@ -22,12 +22,13 @@ class DownloadReceiver : BroadcastReceiver() {
             val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
             val m3uPath = SoundLoader.absPathDocsTemp + "playlist.m3u"
 
-            // PHASE 1: Parse M3U
             if (totalChunks == 0) {
                 if (id == SoundLoader.playlistDownloadId) {
                     chunksDownloaded = 0
 
-                    // FIX: Launch on IO directly, skipping Main thread for parsing
+                    // CORRECTION: Use the unique filename from SoundLoader
+                    val m3uPath = SoundLoader.absPathDocsTemp + SoundLoader.currentM3uFilename
+
                     CoroutineScope(Dispatchers.IO).launch {
                         val urls = SoundLoader.extractMp3Urls(m3uPath)
                         if (urls.isNotEmpty()) {
@@ -40,6 +41,7 @@ class DownloadReceiver : BroadcastReceiver() {
                             urls.forEachIndexed { i, url ->
                                 val req = DownloadManager.Request(Uri.parse(url))
                                 req.setDestinationInExternalFilesDir(context, "temp", "s$i.mp3")
+                                req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
                                 dm.enqueue(req)
                             }
                         } else {
@@ -48,18 +50,36 @@ class DownloadReceiver : BroadcastReceiver() {
                     }
                 }
             }
-            // PHASE 2: Check Chunks
             else {
                 if (id != SoundLoader.playlistDownloadId && id != SoundLoader.thumbnailDownloadId) {
+
+                    // CORRECTION: Check for success!
+                    if (!isDownloadSuccessful(context, id)) {
+                        hasFailures = true
+                        Log.e("DownloadReceiver", "Chunk $id failed")
+                    }
+
                     chunksDownloaded++
                     if (chunksDownloaded >= totalChunks) {
-                        totalChunks = 0
-                        chunksDownloaded = 0
-                        finishTrack(context)
+                        finishTrack(context) // finishTrack checks !hasFailures, so we are safe
                     }
                 }
             }
         }
+    }
+
+    private fun isDownloadSuccessful(context: Context, id: Long): Boolean {
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val query = DownloadManager.Query().setFilterById(id)
+        val cursor = dm.query(query)
+        if (cursor.moveToFirst()) {
+            val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+            if (statusIndex >= 0) {
+                return cursor.getInt(statusIndex) == DownloadManager.STATUS_SUCCESSFUL
+            }
+        }
+        cursor.close()
+        return false
     }
 
     // In DownloadReceiver.kt

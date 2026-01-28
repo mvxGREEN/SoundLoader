@@ -106,7 +106,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(context, "Saved to Documents!", Toast.LENGTH_SHORT).show()
             if (SoundLoader.isShared) {
                 SoundLoader.isShared = false
-                Handler(Looper.getMainLooper()).postDelayed({ finish() }, 1500)
+                Handler(Looper.getMainLooper()).postDelayed({ finish() }, 700)
             }
         }
     }
@@ -313,6 +313,8 @@ class MainActivity : AppCompatActivity() {
                             SoundLoader.processPlaylistWithKey(SoundLoader.mClientId)
                         }
                         if (fetchSuccess) {
+                            binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks Ready"
+                            updateUI(UIState.PREVIEW)
                             binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks"
                             if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
                         } else {
@@ -322,7 +324,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     binding.previewTitle.text = SoundLoader.mTitle
                     binding.previewArtist.text = SoundLoader.mArtist
-                    if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
+                    updateUI(UIState.PREVIEW)
                 }
             } else {
                 updateUI(UIState.EMPTY)
@@ -396,6 +398,8 @@ class MainActivity : AppCompatActivity() {
                         if (SoundLoader.isPlaylist) {
                             val success = SoundLoader.processPlaylistWithKey(id)
                             if (success) {
+                                binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks Ready"
+                                updateUI(UIState.PREVIEW)
                                 // if | present, trim title to everything prior
                                 if (SoundLoader.mTitle.contains(" | "))
                                     SoundLoader.mTitle = SoundLoader.mTitle.substringBefore(" | ")
@@ -408,8 +412,9 @@ class MainActivity : AppCompatActivity() {
                             }
                         } else if (SoundLoader.mStreamUrl.isNotEmpty()) {
                             val fullUrl = "${SoundLoader.mStreamUrl}?client_id=$id"
+                            Log.d("MainActivity", "fullUrl: $fullUrl")
                             SoundLoader.loadJson(fullUrl)
-                            if (SoundLoader.isShared) startDownload()
+                            //if (SoundLoader.isShared) startDownload()
                         }
                     }
                 }
@@ -485,36 +490,32 @@ class MainActivity : AppCompatActivity() {
             initAdMob()
         } else {
             // Hide Ads if Gold
-            binding.adContainer.removeAllViews()
-            binding.adContainer.visibility = View.INVISIBLE // Keeps layout space
+            binding.adView.visibility = View.GONE
             mInterstitialAd = null
         }
     }
 
     private fun initAdMob() {
         MobileAds.initialize(this) {}
-        binding.adContainer.visibility = View.VISIBLE // Ensure visible
-        binding.adContainer.removeAllViews()
 
-        val adView = AdView(this)
-        adView.adUnitId = bannerId
-        adView.setAdSize(getAdSize())
+        // Ensure the view is visible
+        binding.adView.visibility = View.VISIBLE
 
-        binding.adContainer.addView(adView)
-        adView.loadAd(AdRequest.Builder().build())
+        // Load the ad defined in XML
+        val adRequest = AdRequest.Builder().build()
+        binding.adView.loadAd(adRequest)
+
+        // Log for confirmation
+        binding.adView.adListener = object : AdListener() {
+            override fun onAdFailedToLoad(error: LoadAdError) {
+                Log.e("AdMobBanner", "XML Load Failed: ${error.message}")
+            }
+            override fun onAdLoaded() {
+                Log.d("AdMobBanner", "XML Ad Loaded")
+            }
+        }
 
         loadInterstitialAd()
-    }
-
-    private fun getAdSize(): AdSize {
-        val display = windowManager.defaultDisplay
-        val outMetrics = android.util.DisplayMetrics()
-        display.getMetrics(outMetrics)
-        val density = outMetrics.density
-        var adWidthPixels = binding.adContainer.width.toFloat()
-        if (adWidthPixels == 0f) adWidthPixels = outMetrics.widthPixels.toFloat()
-        val adWidth = (adWidthPixels / density).toInt()
-        return AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(this, adWidth)
     }
 
     private fun loadInterstitialAd() {
@@ -608,7 +609,7 @@ class MainActivity : AppCompatActivity() {
     private fun handlePurchase(purchase: Purchase) {
         if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED && !purchase.isAcknowledged) {
             billingClient.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build()) {
-                if (it.responseCode == BillingClient.BillingResponseCode.OK) runOnUiThread { Toast.makeText(this, "Thank you!", Toast.LENGTH_SHORT).show(); saveGoldStatus(true); recreate() }
+                if (it.responseCode == BillingClient.BillingResponseCode.OK) runOnUiThread { Toast.makeText(this, "Thanks for your support <3", Toast.LENGTH_SHORT).show(); saveGoldStatus(true); updateUpgradeIcon(true); recreate() }
             }
         } else if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) saveGoldStatus(true)
     }

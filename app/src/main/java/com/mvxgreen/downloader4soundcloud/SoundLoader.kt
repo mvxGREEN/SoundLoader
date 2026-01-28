@@ -341,12 +341,13 @@ object SoundLoader {
     }
 
     suspend fun moveFileToDocuments(privatePath: String): String = withContext(Dispatchers.IO) {
-        // ... (Keep existing move logic) ...
         val source = File(privatePath)
         if (!source.exists()) return@withContext ""
         val docsDir = File(absPathDocs)
         docsDir.mkdirs()
-        var name = mTitle.replace("[^a-zA-Z0-9 .\\-_]".toRegex(), "_") + ".mp3"
+        var safeName = mTitle.replace("[^a-zA-Z0-9 .\\-_]".toRegex(), "_")
+        safeName = safeName.trim { it.isWhitespace() || it == '.' } // Remove leading/trailing dots/spaces
+        var name = "$safeName.mp3"
         if(name == ".mp3") name = "track.mp3"
         var dest = File(docsDir, name)
         var i = 1
