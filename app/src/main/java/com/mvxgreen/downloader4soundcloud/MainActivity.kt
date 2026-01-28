@@ -181,6 +181,7 @@ class MainActivity : AppCompatActivity() {
             binding.etMainInput.setText("")
             SoundLoader.resetVars()
             updateUI(UIState.EMPTY)
+            SoundLoader.cancelNotification(this)
         }
 
         binding.btnPaste.setOnClickListener {
@@ -309,10 +310,16 @@ class MainActivity : AppCompatActivity() {
                     binding.dlBtn.setImageResource(R.drawable.ic_download)
 
                     if (SoundLoader.mClientId.isNotEmpty()) {
-                        val fetchSuccess = withContext(Dispatchers.IO) {
-                            SoundLoader.processPlaylistWithKey(SoundLoader.mClientId)
+                        val success = SoundLoader.processPlaylistWithKey(SoundLoader.mClientId) { count ->
+                            // Update UI on the Main Thread
+                            runOnUiThread {
+                                // Ensure binding is accessible and we aren't destroyed
+                                if (!isDestroyed && !isFinishing) {
+                                    binding.progressLabel.text = "$count Tracks Found..."
+                                }
+                            }
                         }
-                        if (fetchSuccess) {
+                        if (success) {
                             binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks Ready"
                             updateUI(UIState.PREVIEW)
                             binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks"
@@ -396,7 +403,13 @@ class MainActivity : AppCompatActivity() {
 
                     CoroutineScope(Dispatchers.Main).launch {
                         if (SoundLoader.isPlaylist) {
-                            val success = SoundLoader.processPlaylistWithKey(id)
+                            val success = SoundLoader.processPlaylistWithKey(id) { count ->
+                                runOnUiThread {
+                                    if (!isDestroyed && !isFinishing) {
+                                        binding.progressLabel.text = "$count Tracks Found…"
+                                    }
+                                }
+                            }
                             if (success) {
                                 binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks"
                                 updateUI(UIState.PREVIEW)

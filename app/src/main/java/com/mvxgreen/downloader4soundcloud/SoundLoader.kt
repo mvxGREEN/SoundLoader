@@ -206,7 +206,7 @@ object SoundLoader {
     }
 
     // --- LOOP & SCRAPE ---
-    suspend fun processPlaylistWithKey(clientId: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun processPlaylistWithKey(clientId: String, onProgress: (Int) -> Unit = {}): Boolean = withContext(Dispatchers.IO) {
         Log.d(TAG, "processPlaylistWithKey called. ClientID: $clientId")
 
         if (pendingPlaylistId.isEmpty()) return@withContext false
@@ -230,12 +230,9 @@ object SoundLoader {
                     var permalink = trackObj.optString("permalink_url")
                     val id = trackObj.optLong("id", -1L)
 
-                    // STEP 1: Handle "Stub" Tracks (Missing Permalinks)
+                    // STEP 1: Handle "Stub" Tracks
                     if (permalink.isEmpty() && id != -1L) {
-                        Log.d(TAG, "Track $i is a Stub (ID: $id). Fetching metadata...")
                         val metaUrl = "https://api-v2.soundcloud.com/tracks/$id?client_id=$mClientId"
-
-                        // We use the API here just to find the URL
                         val metaJson = loadNetworkResponse(metaUrl)
                         if (metaJson.isNotEmpty()) {
                             val fullTrackObj = JSONObject(metaJson)
@@ -243,13 +240,9 @@ object SoundLoader {
                         }
                     }
 
-                    // STEP 2: Scrape if we found a link
+                    // STEP 2: Scrape
                     if (permalink.isNotEmpty()) {
-                        Log.d(TAG, "Scraping Track ${i+1}/${tracks.length()}: $permalink")
-
-                        // Clear state
-                        mStreamUrl = ""
-                        mTitle = ""
+                        mStreamUrl = "" // Clear state
 
                         val success = loadHtml(permalink)
 
@@ -262,27 +255,21 @@ object SoundLoader {
                                     "artist" to mArtist,
                                     "artwork_url" to mThumbnailUrl
                                 ))
-                                Log.d(TAG, "Success: $mTitle")
-                            }
-                        } else {
-                            Log.w(TAG, "Failed to scrape: $permalink")
-                        }
 
-                        // Polite Delay (Prevents 429 Errors)
+                                // --- UPDATE UI HERE ---
+                                onProgress(playlistM3uUrls.size)
+                                // ---------------------
+                            }
+                        }
                         kotlinx.coroutines.delay(150)
-                    } else {
-                        Log.w(TAG, "Track $i (ID: $id) could not be resolved. Skipping.")
                     }
                 }
-            } else {
-                Log.w(TAG, "No 'tracks' found in Playlist JSON")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing Playlist JSON", e)
         }
 
         batchTotal = playlistM3uUrls.size
-        Log.d(TAG, "Playlist processing complete. Valid MP3 tracks found: $batchTotal")
         return@withContext batchTotal > 0
     }
 
