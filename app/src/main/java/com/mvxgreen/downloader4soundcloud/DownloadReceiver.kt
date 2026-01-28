@@ -124,8 +124,8 @@ class DownloadReceiver : BroadcastReceiver() {
                 val remaining = SoundLoader.playlistM3uUrls.size
                 Log.d(TAG, "Batch active. $remaining tracks remaining.")
 
-                Log.d(TAG, "Waiting 3-6s for rate-limit cooldown...")
-                kotlinx.coroutines.delay(kotlin.random.Random.nextLong(3000, 6000))
+                Log.d(TAG, "Waiting 1-3s for rate-limit cooldown...")
+                kotlinx.coroutines.delay(kotlin.random.Random.nextLong(1000, 3000))
 
                 // 4. Setup Next Track
                 SoundLoader.resetVarsForNext()

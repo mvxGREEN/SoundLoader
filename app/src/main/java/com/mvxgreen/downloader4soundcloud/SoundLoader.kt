@@ -205,7 +205,7 @@ object SoundLoader {
         }
     }
 
-    // --- REWRITTEN: LOOP & SCRAPE ---
+    // --- LOOP & SCRAPE ---
     suspend fun processPlaylistWithKey(clientId: String): Boolean = withContext(Dispatchers.IO) {
         Log.d(TAG, "processPlaylistWithKey called. ClientID: $clientId")
 
@@ -223,31 +223,40 @@ object SoundLoader {
             val tracks = jsonObj.optJSONArray("tracks")
 
             if (tracks != null && tracks.length() > 0) {
-                Log.d(TAG, "Found ${tracks.length()} tracks. Switching to SCRAPE mode.")
+                Log.d(TAG, "Found ${tracks.length()} tracks. Starting processing...")
 
-                // CRITICAL FIX: Loop through tracks and scrape them individually
                 for (i in 0 until tracks.length()) {
                     val trackObj = tracks.getJSONObject(i)
+                    var permalink = trackObj.optString("permalink_url")
+                    val id = trackObj.optLong("id", -1L)
 
-                    // 1. Get the Web Link (Permalink)
-                    val permalink = trackObj.optString("permalink_url")
+                    // STEP 1: Handle "Stub" Tracks (Missing Permalinks)
+                    if (permalink.isEmpty() && id != -1L) {
+                        Log.d(TAG, "Track $i is a Stub (ID: $id). Fetching metadata...")
+                        val metaUrl = "https://api-v2.soundcloud.com/tracks/$id?client_id=$mClientId"
 
+                        // We use the API here just to find the URL
+                        val metaJson = loadNetworkResponse(metaUrl)
+                        if (metaJson.isNotEmpty()) {
+                            val fullTrackObj = JSONObject(metaJson)
+                            permalink = fullTrackObj.optString("permalink_url")
+                        }
+                    }
+
+                    // STEP 2: Scrape if we found a link
                     if (permalink.isNotEmpty()) {
                         Log.d(TAG, "Scraping Track ${i+1}/${tracks.length()}: $permalink")
 
-                        // 2. Clear previous track state to be safe
+                        // Clear state
                         mStreamUrl = ""
+                        mTitle = ""
 
-                        // 3. Call loadHtml (The function that works!)
                         val success = loadHtml(permalink)
 
                         if (success && mStreamUrl.isNotEmpty()) {
-                            // 4. Resolve the M3U (using the stream URL found by loadHtml)
                             val m3u = resolveM3uUrl(mStreamUrl)
-
                             if (m3u.isNotEmpty()) {
                                 playlistM3uUrls.add(m3u)
-                                // 5. Save the tags (loadHtml already populated mTitle, etc.)
                                 playlistTags.add(mapOf(
                                     "title" to mTitle,
                                     "artist" to mArtist,
@@ -259,10 +268,10 @@ object SoundLoader {
                             Log.w(TAG, "Failed to scrape: $permalink")
                         }
 
-                        // 6. Polite Delay (Crucial to avoid 429 Too Many Requests)
-                        kotlinx.coroutines.delay(200)
+                        // Polite Delay (Prevents 429 Errors)
+                        kotlinx.coroutines.delay(150)
                     } else {
-                        Log.w(TAG, "Track missing permalink_url. Skipping.")
+                        Log.w(TAG, "Track $i (ID: $id) could not be resolved. Skipping.")
                     }
                 }
             } else {

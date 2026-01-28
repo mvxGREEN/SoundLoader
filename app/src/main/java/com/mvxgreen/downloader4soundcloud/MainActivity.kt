@@ -398,7 +398,7 @@ class MainActivity : AppCompatActivity() {
                         if (SoundLoader.isPlaylist) {
                             val success = SoundLoader.processPlaylistWithKey(id)
                             if (success) {
-                                binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks Ready"
+                                binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks"
                                 updateUI(UIState.PREVIEW)
                                 // if | present, trim title to everything prior
                                 if (SoundLoader.mTitle.contains(" | "))
