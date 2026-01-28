@@ -6,13 +6,14 @@ import android.content.Context
 import android.content.Intent
 import android.media.MediaScannerConnection
 import android.net.Uri
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class DownloadReceiver : BroadcastReceiver() {
-
+    private var hasFailures = false
     private var chunksDownloaded = 0
     private var totalChunks = 0
 
@@ -61,29 +62,45 @@ class DownloadReceiver : BroadcastReceiver() {
         }
     }
 
+    // In DownloadReceiver.kt
+
     private fun finishTrack(context: Context) {
         val appContext = context.applicationContext
 
         CoroutineScope(Dispatchers.IO).launch {
-            // Build File (Heavy CPU/IO)
-            val path = SoundLoader.concatMp3(SoundLoader.mMp3Urls.size)
-            SoundLoader.setTags(path)
-            val finalPath = SoundLoader.moveFileToDocuments(path)
 
-            if (finalPath.isNotEmpty()) {
-                MediaScannerConnection.scanFile(appContext, arrayOf(finalPath), null, null)
+            // 1. Validate & Stitch (Prevents corrupted files)
+            if (!hasFailures && totalChunks > 0) {
+                val path = SoundLoader.concatMp3(SoundLoader.mMp3Urls.size)
+                SoundLoader.setTags(path)
+                val finalPath = SoundLoader.moveFileToDocuments(path)
+
+                if (finalPath.isNotEmpty()) {
+                    MediaScannerConnection.scanFile(appContext, arrayOf(finalPath), null, null)
+                }
+            } else {
+                Log.e("DownloadReceiver", "Track skipped: Download failures detected.")
             }
 
-            // Clean up old files (Heavy IO)
+            // 2. Cleanup
             SoundLoader.deleteTempFiles()
+            totalChunks = 0
+            chunksDownloaded = 0
+            hasFailures = false
 
-            // --- C# STYLE BATCH LOOP ---
+            // 3. Process Next Track (With Delay)
             if (SoundLoader.playlistM3uUrls.isNotEmpty()) {
-                // 1. Pop Next
+
+                // --- NEW: Add "Human" Delay ---
+                // Waits 3 to 6 seconds before requesting the next song.
+                // This allows the server's rate-limit bucket to cool down.
+                Log.d("DownloadReceiver", "Waiting for rate-limit cooldown...")
+                kotlinx.coroutines.delay(kotlin.random.Random.nextLong(3000, 6000))
+
+                // 4. Setup Next Track
                 SoundLoader.resetVarsForNext()
                 SoundLoader.mM3uUrl = SoundLoader.playlistM3uUrls.removeAt(0)
 
-                // 2. Set Metadata
                 if (SoundLoader.playlistTags.isNotEmpty()) {
                     val tag = SoundLoader.playlistTags.removeAt(0)
                     SoundLoader.mTitle = tag["title"] ?: "Track"
@@ -92,14 +109,14 @@ class DownloadReceiver : BroadcastReceiver() {
                     SoundLoader.mThumbnailFilename = if (SoundLoader.mThumbnailUrl.contains(".jpg")) "thumbnail.jpg" else "thumbnail.png"
                 }
 
-                // 3. Start Download Service
+                // 5. Start Service
                 val nextIntent = Intent(appContext, DownloadService::class.java)
                 nextIntent.action = "START_DOWNLOAD"
-                // Starting service is fast, can be done from IO context
                 appContext.startService(nextIntent)
 
             } else {
-                // Done - Notify UI on Main Thread
+                // Batch Finished
+                SoundLoader.cancelNotification(appContext)
                 withContext(Dispatchers.Main) {
                     val i = Intent("DOWNLOAD_FINISHED")
                     i.setPackage(appContext.packageName)

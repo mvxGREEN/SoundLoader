@@ -79,6 +79,26 @@ class MainActivity : AppCompatActivity() {
 
     enum class UIState { EMPTY, LOADING, PREVIEW, DOWNLOADING, FINISHED }
 
+    private val progressReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val text = intent?.getStringExtra("text") ?: "Downloading..."
+            val isIndeterminate = intent?.getBooleanExtra("indeterminate", true) ?: true
+            val current = intent?.getIntExtra("current", 0) ?: 0
+            val total = intent?.getIntExtra("total", 0) ?: 100
+
+            // Update TextView
+            // Note: We need to bind this view if not in binding (it is in binding now due to XML change)
+            // Since we added ID dl_progress_text to XML, binding.dlProgressText is available
+            binding.dlProgressText.text = text
+
+            // Update ProgressBar
+            binding.progressRingDlr.isIndeterminate = isIndeterminate
+            if (!isIndeterminate) {
+                binding.progressRingDlr.max = total
+                binding.progressRingDlr.progress = current
+            }
+        }
+    }
     private val downloadReceiver = DownloadReceiver()
     private val finishReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -86,7 +106,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(context, "Saved to Documents!", Toast.LENGTH_SHORT).show()
             if (SoundLoader.isShared) {
                 SoundLoader.isShared = false
-                Handler(Looper.getMainLooper()).postDelayed({ finish() }, 700)
+                Handler(Looper.getMainLooper()).postDelayed({ finish() }, 1500)
             }
         }
     }
@@ -122,6 +142,7 @@ class MainActivity : AppCompatActivity() {
         setupListeners()
         setupWebView()
 
+        ContextCompat.registerReceiver(this, progressReceiver, IntentFilter("ACTION_PROGRESS_UPDATE"), ContextCompat.RECEIVER_NOT_EXPORTED)
         ContextCompat.registerReceiver(this, downloadReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), ContextCompat.RECEIVER_EXPORTED)
         ContextCompat.registerReceiver(this, finishReceiver, IntentFilter("DOWNLOAD_FINISHED"), ContextCompat.RECEIVER_NOT_EXPORTED)
 
@@ -213,6 +234,7 @@ class MainActivity : AppCompatActivity() {
     private fun handleInput(rawInput: String) {
         inputHandler.removeCallbacksAndMessages(null)
         fetchJob?.cancel()
+        SoundLoader.resetVars()
 
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(binding.etMainInput.windowToken, 0)
@@ -278,6 +300,10 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (SoundLoader.isPlaylist) {
+                    // if | present, trim title to everything prior
+                    if (SoundLoader.mTitle.contains(" | "))
+                        SoundLoader.mTitle = SoundLoader.mTitle.substringBefore(" | ")
+
                     binding.previewTitle.text = "Playlist: ${SoundLoader.mTitle}"
                     binding.previewArtist.text = "Loading tracks..."
                     binding.dlBtn.setImageResource(R.drawable.ic_download)
@@ -287,8 +313,8 @@ class MainActivity : AppCompatActivity() {
                             SoundLoader.processPlaylistWithKey(SoundLoader.mClientId)
                         }
                         if (fetchSuccess) {
-                            binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks Ready"
-                            updateUI(UIState.PREVIEW)
+                            binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks"
+                            if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
                         } else {
                             if (SoundLoader.mPlayerUrl.isNotEmpty()) binding.previewWebview.loadUrl(SoundLoader.mPlayerUrl)
                         }
@@ -296,7 +322,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     binding.previewTitle.text = SoundLoader.mTitle
                     binding.previewArtist.text = SoundLoader.mArtist
-                    updateUI(UIState.PREVIEW)
+                    if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
                 }
             } else {
                 updateUI(UIState.EMPTY)
@@ -308,9 +334,14 @@ class MainActivity : AppCompatActivity() {
     private fun startDownload() {
         updateUI(UIState.DOWNLOADING)
 
+        // Reset Progress UI defaults
+        binding.dlProgressText.text = getString(R.string.downloading)
+        binding.progressRingDlr.isIndeterminate = true
+
         if (SoundLoader.isPlaylist) {
             SoundLoader.isBatchActive = true
             if (SoundLoader.playlistM3uUrls.isNotEmpty()) {
+                // Prepare variables for the first track
                 SoundLoader.mM3uUrl = SoundLoader.playlistM3uUrls.removeAt(0)
                 if (SoundLoader.playlistTags.isNotEmpty()) {
                     val tag = SoundLoader.playlistTags.removeAt(0)
@@ -318,6 +349,7 @@ class MainActivity : AppCompatActivity() {
                     SoundLoader.mArtist = tag["artist"] ?: ""
                     SoundLoader.mThumbnailUrl = tag["artwork_url"] ?: ""
                 }
+                // Start the Service (The Service will handle generating the Unique ID)
                 val intent = Intent(this, DownloadService::class.java)
                 intent.action = "START_DOWNLOAD"
                 startService(intent)
@@ -327,10 +359,11 @@ class MainActivity : AppCompatActivity() {
                 SoundLoader.isBatchActive = false
             }
         } else {
+            // Single File Logic
             CoroutineScope(Dispatchers.Main).launch {
                 if (SoundLoader.mStreamUrl.isNotEmpty() && SoundLoader.mM3uUrl.isEmpty()) {
                     val url = "${SoundLoader.mStreamUrl}?client_id=${SoundLoader.mClientId}"
-                    SoundLoader.loadJson(url)
+                    SoundLoader.loadJson(url) // This is suspend, so we need the CoroutineScope wrapper
                 }
                 val intent = Intent(this@MainActivity, DownloadService::class.java)
                 intent.action = "START_DOWNLOAD"
@@ -363,17 +396,20 @@ class MainActivity : AppCompatActivity() {
                         if (SoundLoader.isPlaylist) {
                             val success = SoundLoader.processPlaylistWithKey(id)
                             if (success) {
-                                binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks Ready"
-                                updateUI(UIState.PREVIEW)
+                                // if | present, trim title to everything prior
+                                if (SoundLoader.mTitle.contains(" | "))
+                                    SoundLoader.mTitle = SoundLoader.mTitle.substringBefore(" | ")
+
+                                binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks"
+                                if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
                             } else {
                                 Toast.makeText(this@MainActivity, "Playlist fetch failed", Toast.LENGTH_SHORT).show()
                                 updateUI(UIState.EMPTY)
                             }
                         } else if (SoundLoader.mStreamUrl.isNotEmpty()) {
                             val fullUrl = "${SoundLoader.mStreamUrl}?client_id=$id"
-                            Log.d("MainActivity", "fullUrl: $fullUrl")
                             SoundLoader.loadJson(fullUrl)
-                            //if (SoundLoader.isShared) startDownload()
+                            if (SoundLoader.isShared) startDownload()
                         }
                     }
                 }
@@ -449,32 +485,36 @@ class MainActivity : AppCompatActivity() {
             initAdMob()
         } else {
             // Hide Ads if Gold
-            binding.adView.visibility = View.GONE
+            binding.adContainer.removeAllViews()
+            binding.adContainer.visibility = View.INVISIBLE // Keeps layout space
             mInterstitialAd = null
         }
     }
 
     private fun initAdMob() {
         MobileAds.initialize(this) {}
+        binding.adContainer.visibility = View.VISIBLE // Ensure visible
+        binding.adContainer.removeAllViews()
 
-        // Ensure the view is visible
-        binding.adView.visibility = View.VISIBLE
+        val adView = AdView(this)
+        adView.adUnitId = bannerId
+        adView.setAdSize(getAdSize())
 
-        // Load the ad defined in XML
-        val adRequest = AdRequest.Builder().build()
-        binding.adView.loadAd(adRequest)
-
-        // Log for confirmation
-        binding.adView.adListener = object : AdListener() {
-            override fun onAdFailedToLoad(error: LoadAdError) {
-                Log.e("AdMobBanner", "XML Load Failed: ${error.message}")
-            }
-            override fun onAdLoaded() {
-                Log.d("AdMobBanner", "XML Ad Loaded")
-            }
-        }
+        binding.adContainer.addView(adView)
+        adView.loadAd(AdRequest.Builder().build())
 
         loadInterstitialAd()
+    }
+
+    private fun getAdSize(): AdSize {
+        val display = windowManager.defaultDisplay
+        val outMetrics = android.util.DisplayMetrics()
+        display.getMetrics(outMetrics)
+        val density = outMetrics.density
+        var adWidthPixels = binding.adContainer.width.toFloat()
+        if (adWidthPixels == 0f) adWidthPixels = outMetrics.widthPixels.toFloat()
+        val adWidth = (adWidthPixels / density).toInt()
+        return AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(this, adWidth)
     }
 
     private fun loadInterstitialAd() {
@@ -568,7 +608,7 @@ class MainActivity : AppCompatActivity() {
     private fun handlePurchase(purchase: Purchase) {
         if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED && !purchase.isAcknowledged) {
             billingClient.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build()) {
-                if (it.responseCode == BillingClient.BillingResponseCode.OK) runOnUiThread { Toast.makeText(this, "Thanks for your support <3", Toast.LENGTH_SHORT).show(); saveGoldStatus(true); updateUpgradeIcon(true); recreate() }
+                if (it.responseCode == BillingClient.BillingResponseCode.OK) runOnUiThread { Toast.makeText(this, "Thank you!", Toast.LENGTH_SHORT).show(); saveGoldStatus(true); recreate() }
             }
         } else if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) saveGoldStatus(true)
     }
@@ -600,5 +640,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onDestroy() { super.onDestroy(); unregisterReceiver(downloadReceiver); unregisterReceiver(finishReceiver) }
+    override fun onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(progressReceiver)
+        unregisterReceiver(downloadReceiver)
+        unregisterReceiver(finishReceiver) }
 }

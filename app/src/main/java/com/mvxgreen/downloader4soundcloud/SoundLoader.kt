@@ -4,7 +4,9 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jaudiotagger.audio.AudioFileIO
 import org.jaudiotagger.tag.FieldKey
@@ -18,6 +20,11 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.regex.Pattern
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 
 object SoundLoader {
     private const val TAG = "SoundLoader"
@@ -45,6 +52,7 @@ object SoundLoader {
     var isBatchActive = false
 
     // --- BATCH STATE ---
+    var currentM3uFilename = ""
     var playlistM3uUrls = mutableListOf<String>()
     var playlistTags = mutableListOf<Map<String, String>>()
     var batchTotal = 0
@@ -92,11 +100,66 @@ object SoundLoader {
         // Run cleanup in background if called from coroutine, otherwise just fire and forget in main logic
         // For resetVars usually called at start, we can leave as is or launch scope.
         // We will make deleteTempFiles suspend to be safe.
+        CoroutineScope(Dispatchers.IO).launch {
+            deleteTempFiles()
+        }
     }
 
     fun resetVarsForNext() {
         mM3uUrl = ""
         mMp3Urls.clear()
+    }
+
+    // --- NOTIFICATION CONSTANTS ---
+    const val CHANNEL_ID = "sc_downloader_channel"
+    const val NOTIFICATION_ID = 777
+
+    fun createNotificationChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Downloads"
+            val descriptionText = "Show download progress"
+            val importance = NotificationManager.IMPORTANCE_LOW // Low = no sound/popup
+            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+            val notificationManager: NotificationManager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    fun updateNotification(context: Context, text: String, progressCurrent: Int, progressMax: Int, indeterminate: Boolean) {
+        // Permission check for Android 13+ is handled in MainActivity,
+        // but we wrap in try/catch just in case permission was revoked.
+        try {
+            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_download) // Use your app icon if available like R.drawable.ic_download
+                .setContentTitle("SoundLoader")
+                .setContentText(text)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+
+            if (indeterminate) {
+                builder.setProgress(0, 0, true)
+            } else {
+                builder.setProgress(progressMax, progressCurrent, false)
+            }
+
+            with(NotificationManagerCompat.from(context)) {
+                notify(NOTIFICATION_ID, builder.build())
+            }
+        } catch (e: SecurityException) {
+            // Notification permission missing
+        }
+    }
+
+    fun cancelNotification(context: Context) {
+        try {
+            with(NotificationManagerCompat.from(context)) {
+                cancel(NOTIFICATION_ID)
+            }
+        } catch (e: SecurityException) {}
     }
 
     suspend fun loadHtml(url: String): Boolean = withContext(Dispatchers.IO) {
@@ -298,6 +361,8 @@ object SoundLoader {
             val dir = File(absPathDocsTemp)
             dir.deleteRecursively()
             dir.mkdirs()
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.e("SoundLoader", "deleteTempFiles failed", e)
+        }
     }
 }
