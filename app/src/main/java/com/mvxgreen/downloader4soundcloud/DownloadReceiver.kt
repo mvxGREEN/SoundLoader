@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class DownloadReceiver : BroadcastReceiver() {
+    private val TAG = "DownloadReceiver"
     private var hasFailures = false
     private var chunksDownloaded = 0
     private var totalChunks = 0
@@ -20,20 +21,23 @@ class DownloadReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == DownloadManager.ACTION_DOWNLOAD_COMPLETE) {
             val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-            val m3uPath = SoundLoader.absPathDocsTemp + "playlist.m3u"
+            Log.d(TAG, "Download Complete ID: $id. TotalChunks: $totalChunks")
 
             if (totalChunks == 0) {
                 if (id == SoundLoader.playlistDownloadId) {
+                    Log.d(TAG, "M3U Download Complete. Parsing...")
                     chunksDownloaded = 0
 
                     // CORRECTION: Use the unique filename from SoundLoader
                     val m3uPath = SoundLoader.absPathDocsTemp + SoundLoader.currentM3uFilename
+                    Log.d(TAG, "Reading M3U from: $m3uPath")
 
                     CoroutineScope(Dispatchers.IO).launch {
                         val urls = SoundLoader.extractMp3Urls(m3uPath)
                         if (urls.isNotEmpty()) {
                             totalChunks = urls.size
                             SoundLoader.mMp3Urls = urls.toMutableList()
+                            Log.d(TAG, "M3U Parsed. Found $totalChunks chunks. Enqueueing...")
 
                             val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
@@ -45,6 +49,7 @@ class DownloadReceiver : BroadcastReceiver() {
                                 dm.enqueue(req)
                             }
                         } else {
+                            Log.e(TAG, "M3U was empty or failed to parse.")
                             finishTrack(context) // Skip empty/failed M3Us
                         }
                     }
@@ -56,12 +61,15 @@ class DownloadReceiver : BroadcastReceiver() {
                     // CORRECTION: Check for success!
                     if (!isDownloadSuccessful(context, id)) {
                         hasFailures = true
-                        Log.e("DownloadReceiver", "Chunk $id failed")
+                        Log.e(TAG, "Chunk $id FAILED. Marking track as failure.")
                     }
 
                     chunksDownloaded++
+                    // Log.d(TAG, "Chunk $chunksDownloaded / $totalChunks downloaded") // Optional verbose
+
                     if (chunksDownloaded >= totalChunks) {
-                        finishTrack(context) // finishTrack checks !hasFailures, so we are safe
+                        Log.d(TAG, "All chunks finished. Proceeding to stitch.")
+                        finishTrack(context)
                     }
                 }
             }
@@ -71,35 +79,38 @@ class DownloadReceiver : BroadcastReceiver() {
     private fun isDownloadSuccessful(context: Context, id: Long): Boolean {
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val query = DownloadManager.Query().setFilterById(id)
-        val cursor = dm.query(query)
-        if (cursor.moveToFirst()) {
-            val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
-            if (statusIndex >= 0) {
-                return cursor.getInt(statusIndex) == DownloadManager.STATUS_SUCCESSFUL
+
+        // .use block automatically calls close() when the block exits (even on return)
+        dm.query(query)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                if (statusIndex >= 0) {
+                    return cursor.getInt(statusIndex) == DownloadManager.STATUS_SUCCESSFUL
+                }
             }
         }
-        cursor.close()
         return false
     }
 
-    // In DownloadReceiver.kt
-
     private fun finishTrack(context: Context) {
         val appContext = context.applicationContext
+        Log.d(TAG, "finishTrack() called")
 
         CoroutineScope(Dispatchers.IO).launch {
 
             // 1. Validate & Stitch (Prevents corrupted files)
             if (!hasFailures && totalChunks > 0) {
+                Log.d(TAG, "No failures detected. Stitching MP3...")
                 val path = SoundLoader.concatMp3(SoundLoader.mMp3Urls.size)
                 SoundLoader.setTags(path)
                 val finalPath = SoundLoader.moveFileToDocuments(path)
 
                 if (finalPath.isNotEmpty()) {
                     MediaScannerConnection.scanFile(appContext, arrayOf(finalPath), null, null)
+                    Log.d(TAG, "Track saved and scanned: $finalPath")
                 }
             } else {
-                Log.e("DownloadReceiver", "Track skipped: Download failures detected.")
+                Log.e(TAG, "Track skipped: Failures=$hasFailures, TotalChunks=$totalChunks")
             }
 
             // 2. Cleanup
@@ -110,11 +121,10 @@ class DownloadReceiver : BroadcastReceiver() {
 
             // 3. Process Next Track (With Delay)
             if (SoundLoader.playlistM3uUrls.isNotEmpty()) {
+                val remaining = SoundLoader.playlistM3uUrls.size
+                Log.d(TAG, "Batch active. $remaining tracks remaining.")
 
-                // --- NEW: Add "Human" Delay ---
-                // Waits 3 to 6 seconds before requesting the next song.
-                // This allows the server's rate-limit bucket to cool down.
-                Log.d("DownloadReceiver", "Waiting for rate-limit cooldown...")
+                Log.d(TAG, "Waiting 3-6s for rate-limit cooldown...")
                 kotlinx.coroutines.delay(kotlin.random.Random.nextLong(3000, 6000))
 
                 // 4. Setup Next Track
@@ -130,12 +140,13 @@ class DownloadReceiver : BroadcastReceiver() {
                 }
 
                 // 5. Start Service
+                Log.d(TAG, "Starting service for next track: ${SoundLoader.mTitle}")
                 val nextIntent = Intent(appContext, DownloadService::class.java)
                 nextIntent.action = "START_DOWNLOAD"
                 appContext.startService(nextIntent)
 
             } else {
-                // Batch Finished
+                Log.d(TAG, "Batch Finished. Broadcasting DONE.")
                 SoundLoader.cancelNotification(appContext)
                 withContext(Dispatchers.Main) {
                     val i = Intent("DOWNLOAD_FINISHED")

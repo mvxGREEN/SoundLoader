@@ -64,7 +64,6 @@ object SoundLoader {
     private const val FLAG_END_STREAM_ID = "/stream"
     private const val STREAM_URL_BASE = "https://api-v2.soundcloud.com/media/soundcloud:tracks:"
     private const val STREAM_URL_END = "/stream/hls"
-    private const val FALLBACK_CLIENT_ID = "a3e059563d7fd3372b49b37f00a00bcf"
 
     val absPathDocs: String
         get() = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).absolutePath + "/"
@@ -78,7 +77,7 @@ object SoundLoader {
     }
 
     fun resetVars() {
-        Log.d(TAG, "Full Reset")
+        Log.d(TAG, "resetVars() called. Full Reset.")
         mStreamUrl = ""
         mM3uUrl = ""
         mTitle = ""
@@ -97,15 +96,14 @@ object SoundLoader {
         batchTotal = 0
         batchProgress = 0
         pendingPlaylistId = ""
-        // Run cleanup in background if called from coroutine, otherwise just fire and forget in main logic
-        // For resetVars usually called at start, we can leave as is or launch scope.
-        // We will make deleteTempFiles suspend to be safe.
+
         CoroutineScope(Dispatchers.IO).launch {
             deleteTempFiles()
         }
     }
 
     fun resetVarsForNext() {
+        Log.d(TAG, "resetVarsForNext() called. Preparing for next track.")
         mM3uUrl = ""
         mMp3Urls.clear()
     }
@@ -118,7 +116,7 @@ object SoundLoader {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = "Downloads"
             val descriptionText = "Show download progress"
-            val importance = NotificationManager.IMPORTANCE_LOW // Low = no sound/popup
+            val importance = NotificationManager.IMPORTANCE_LOW
             val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
                 description = descriptionText
             }
@@ -129,11 +127,9 @@ object SoundLoader {
     }
 
     fun updateNotification(context: Context, text: String, progressCurrent: Int, progressMax: Int, indeterminate: Boolean) {
-        // Permission check for Android 13+ is handled in MainActivity,
-        // but we wrap in try/catch just in case permission was revoked.
         try {
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_sys_download) // Use your app icon if available like R.drawable.ic_download
+                .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentTitle("SoundLoader")
                 .setContentText(text)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -149,9 +145,7 @@ object SoundLoader {
             with(NotificationManagerCompat.from(context)) {
                 notify(NOTIFICATION_ID, builder.build())
             }
-        } catch (e: SecurityException) {
-            // Notification permission missing
-        }
+        } catch (e: SecurityException) { }
     }
 
     fun cancelNotification(context: Context) {
@@ -162,8 +156,9 @@ object SoundLoader {
         } catch (e: SecurityException) {}
     }
 
+    // The Single-Track Scraper (This works, so we will reuse it in the loop!)
     suspend fun loadHtml(url: String): Boolean = withContext(Dispatchers.IO) {
-        // ... (Keep existing scraping logic exactly as is) ...
+        // Log.d(TAG, "loadHtml() called for URL: $url") // Commented out to reduce spam in loops
         try {
             val doc = Jsoup.connect(url).userAgent("Mozilla/5.0").get()
             val html = doc.html()
@@ -181,6 +176,7 @@ object SoundLoader {
             if (mPlayerUrl.isEmpty()) mPlayerUrl = doc.select("meta[name=twitter:player]").attr("content")
 
             if (url.contains("/sets/") || url.contains("/albums/")) {
+                Log.d(TAG, "Detected Playlist/Set.")
                 isPlaylist = true
                 pendingPlaylistId = extractPlaylistId(html)
                 return@withContext true
@@ -201,106 +197,133 @@ object SoundLoader {
                     return@withContext true
                 }
             }
+            Log.e(TAG, "loadHtml failed: No stream URL found for $url")
             return@withContext false
-        } catch (e: Exception) { return@withContext false }
+        } catch (e: Exception) {
+            Log.e(TAG, "loadHtml Exception: ${e.message}")
+            return@withContext false
+        }
     }
 
+    // --- REWRITTEN: LOOP & SCRAPE ---
     suspend fun processPlaylistWithKey(clientId: String): Boolean = withContext(Dispatchers.IO) {
+        Log.d(TAG, "processPlaylistWithKey called. ClientID: $clientId")
+
         if (pendingPlaylistId.isEmpty()) return@withContext false
         mClientId = clientId
-        val trackIds = fetchPlaylistTrackIds(pendingPlaylistId, mClientId)
-        if (trackIds.isEmpty()) return@withContext false
 
-        val idChunks = trackIds.chunked(50)
-        for (chunk in idChunks) {
-            val batchUrl = "https://api-v2.soundcloud.com/tracks?ids=${chunk.joinToString(",")}&client_id=$mClientId"
-            val jsonStr = loadNetworkResponse(batchUrl)
-            if (jsonStr.isNotEmpty()) parseBatchResponse(jsonStr)
-        }
-        batchTotal = playlistM3uUrls.size
-        return@withContext batchTotal > 0
-    }
+        val url = "https://api-v2.soundcloud.com/playlists/$pendingPlaylistId?client_id=$clientId"
+        Log.d(TAG, "Fetching Playlist Data: $url")
 
-    private suspend fun fetchPlaylistTrackIds(playlistId: String, clientId: String): List<String> {
-        val ids = mutableListOf<String>()
-        val jsonStr = loadNetworkResponse("https://api-v2.soundcloud.com/playlists/$playlistId?client_id=$clientId")
-        if (jsonStr.isEmpty()) return ids
+        val jsonStr = loadNetworkResponse(url)
+        if (jsonStr.isEmpty()) return@withContext false
+
         try {
             val jsonObj = JSONObject(jsonStr)
             val tracks = jsonObj.optJSONArray("tracks")
-            if (tracks != null) {
+
+            if (tracks != null && tracks.length() > 0) {
+                Log.d(TAG, "Found ${tracks.length()} tracks. Switching to SCRAPE mode.")
+
+                // CRITICAL FIX: Loop through tracks and scrape them individually
                 for (i in 0 until tracks.length()) {
-                    val track = tracks.getJSONObject(i)
-                    if (track.has("id")) ids.add(track.getString("id"))
-                }
-            }
-        } catch (e: Exception) {}
-        return ids
-    }
+                    val trackObj = tracks.getJSONObject(i)
 
-    private fun parseBatchResponse(jsonStr: String) {
-        try {
-            val jsonArray = JSONArray(jsonStr)
-            for (i in 0 until jsonArray.length()) {
-                val trackObj = jsonArray.getJSONObject(i)
-                val artwork = trackObj.optString("artwork_url").replace("-large.", "-t500x500.")
-                val title = trackObj.optString("title")
-                val artist = trackObj.optJSONObject("user")?.optString("username") ?: "Unknown"
+                    // 1. Get the Web Link (Permalink)
+                    val permalink = trackObj.optString("permalink_url")
 
-                var streamUrl = ""
-                val transcodings = trackObj.optJSONObject("media")?.optJSONArray("transcodings")
+                    if (permalink.isNotEmpty()) {
+                        Log.d(TAG, "Scraping Track ${i+1}/${tracks.length()}: $permalink")
 
-                if (transcodings != null && transcodings.length() > 0) {
-                    for (j in 0 until transcodings.length()) {
-                        val trans = transcodings.getJSONObject(j)
-                        val mime = trans.optJSONObject("format")?.optString("mime_type")
-                        if (mime == "audio/mpeg" && trans.optString("protocol") == "hls") {
-                            streamUrl = trans.optString("url")
-                            break
+                        // 2. Clear previous track state to be safe
+                        mStreamUrl = ""
+
+                        // 3. Call loadHtml (The function that works!)
+                        val success = loadHtml(permalink)
+
+                        if (success && mStreamUrl.isNotEmpty()) {
+                            // 4. Resolve the M3U (using the stream URL found by loadHtml)
+                            val m3u = resolveM3uUrl(mStreamUrl)
+
+                            if (m3u.isNotEmpty()) {
+                                playlistM3uUrls.add(m3u)
+                                // 5. Save the tags (loadHtml already populated mTitle, etc.)
+                                playlistTags.add(mapOf(
+                                    "title" to mTitle,
+                                    "artist" to mArtist,
+                                    "artwork_url" to mThumbnailUrl
+                                ))
+                                Log.d(TAG, "Success: $mTitle")
+                            }
+                        } else {
+                            Log.w(TAG, "Failed to scrape: $permalink")
                         }
-                    }
-                    if (streamUrl.isEmpty()) streamUrl = transcodings.getJSONObject(0).optString("url")
-                }
 
-                if (streamUrl.isNotEmpty()) {
-                    val m3u = resolveM3uUrl(streamUrl)
-                    if (m3u.isNotEmpty()) {
-                        playlistM3uUrls.add(m3u)
-                        playlistTags.add(mapOf("title" to title, "artist" to artist, "artwork_url" to artwork))
+                        // 6. Polite Delay (Crucial to avoid 429 Too Many Requests)
+                        kotlinx.coroutines.delay(200)
+                    } else {
+                        Log.w(TAG, "Track missing permalink_url. Skipping.")
                     }
                 }
+            } else {
+                Log.w(TAG, "No 'tracks' found in Playlist JSON")
             }
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing Playlist JSON", e)
+        }
+
+        batchTotal = playlistM3uUrls.size
+        Log.d(TAG, "Playlist processing complete. Valid MP3 tracks found: $batchTotal")
+        return@withContext batchTotal > 0
     }
 
     private fun resolveM3uUrl(streamBaseUrl: String): String {
         try {
             val authUrl = if (streamBaseUrl.contains("client_id")) streamBaseUrl else "$streamBaseUrl?client_id=$mClientId"
             val jsonStr = URL(authUrl).readText()
-            return JSONObject(jsonStr).optString("url", "")
-        } catch (e: Exception) { return "" }
+            val m3u = JSONObject(jsonStr).optString("url", "")
+            return m3u
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resolving M3U url", e)
+            return ""
+        }
     }
 
     private fun extractPlaylistId(html: String): String {
         val matcher = Pattern.compile("soundcloud://playlists:(\\d+)").matcher(html)
-        return if (matcher.find()) matcher.group(1) ?: "" else ""
+        val id = if (matcher.find()) matcher.group(1) ?: "" else ""
+        if (id.isEmpty()) Log.w(TAG, "Could not extract playlist ID from HTML")
+        return id
     }
 
     private suspend fun loadNetworkResponse(urlStr: String): String = withContext(Dispatchers.IO) {
         try {
             val conn = URL(urlStr).openConnection() as HttpURLConnection
             conn.connectTimeout = 5000
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
+            conn.setRequestProperty("Referer", "https://soundcloud.com/")
+            conn.setRequestProperty("Origin", "https://soundcloud.com")
+            conn.setRequestProperty("Accept", "application/json, text/javascript, */*; q=0.01")
             conn.connect()
-            if (conn.responseCode == 200) conn.inputStream.bufferedReader().use { it.readText() } else ""
-        } catch (e: Exception) { "" }
+
+            val code = conn.responseCode
+            if (code == 200) {
+                return@withContext conn.inputStream.bufferedReader().use { it.readText() }
+            } else {
+                return@withContext ""
+            }
+        } catch (e: Exception) {
+            return@withContext ""
+        }
     }
 
+    // ... (loadJson, extractMp3Urls, concatMp3, setTags, moveFileToDocuments, deleteTempFiles remain unchanged) ...
     suspend fun loadJson(urlStr: String) = withContext(Dispatchers.IO) {
         try {
             val json = URL(urlStr).readText()
             val jsonObj = JSONObject(json)
             if (jsonObj.has("url")) mM3uUrl = jsonObj.getString("url")
-        } catch (e: Exception) {}
+        } catch (e: Exception) { }
     }
 
     suspend fun extractMp3Urls(m3uPath: String): List<String> = withContext(Dispatchers.IO) {
@@ -324,7 +347,6 @@ object SoundLoader {
     }
 
     suspend fun setTags(filePath: String) = withContext(Dispatchers.IO) {
-        // ... (Keep existing tag logic) ...
         try {
             val file = File(filePath)
             if (file.exists()) {
@@ -337,7 +359,7 @@ object SoundLoader {
                 if (thumb.exists()) tag.setField(ArtworkFactory.createArtworkFromFile(thumb))
                 audioFile.commit()
             }
-        } catch (e: Exception) {}
+        } catch (e: Exception) { }
     }
 
     suspend fun moveFileToDocuments(privatePath: String): String = withContext(Dispatchers.IO) {
@@ -345,25 +367,24 @@ object SoundLoader {
         if (!source.exists()) return@withContext ""
         val docsDir = File(absPathDocs)
         docsDir.mkdirs()
+
         var safeName = mTitle.replace("[^a-zA-Z0-9 .\\-_]".toRegex(), "_")
-        safeName = safeName.trim { it.isWhitespace() || it == '.' } // Remove leading/trailing dots/spaces
+        safeName = safeName.trim { it.isWhitespace() || it == '.' }
         var name = "$safeName.mp3"
         if(name == ".mp3") name = "track.mp3"
+
         var dest = File(docsDir, name)
         var i = 1
         while(dest.exists()) { dest = File(docsDir, name.replace(".mp3", " ($i).mp3")); i++ }
+
         source.copyTo(dest, true)
         return@withContext dest.absolutePath
     }
 
-    // FIX: Make this suspend and run on IO
     suspend fun deleteTempFiles() = withContext(Dispatchers.IO) {
         try {
-            val dir = File(absPathDocsTemp)
-            dir.deleteRecursively()
-            dir.mkdirs()
-        } catch (e: Exception) {
-            Log.e("SoundLoader", "deleteTempFiles failed", e)
-        }
+            File(absPathDocsTemp).deleteRecursively()
+            File(absPathDocsTemp).mkdirs()
+        } catch (e: Exception) { }
     }
 }
