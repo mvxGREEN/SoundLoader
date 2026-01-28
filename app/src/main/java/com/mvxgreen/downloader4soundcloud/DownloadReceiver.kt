@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.media.MediaScannerConnection
 import android.net.Uri
-import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -20,52 +19,39 @@ class DownloadReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == DownloadManager.ACTION_DOWNLOAD_COMPLETE) {
             val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-            Log.d("DownloadReceiver", "Download Complete. ID: $id")
+            val m3uPath = SoundLoader.absPathDocsTemp + "playlist.m3u"
 
-            val realM3uPath = SoundLoader.absPathDocsTemp + "playlist.m3u"
-
-            // PHASE 1: Waiting for Playlist
+            // PHASE 1: Parse M3U
             if (totalChunks == 0) {
                 if (id == SoundLoader.playlistDownloadId) {
-                    chunksDownloaded = 0 // Reset
-
+                    chunksDownloaded = 0
                     CoroutineScope(Dispatchers.Main).launch {
-                        val urls = SoundLoader.extractMp3Urls(realM3uPath)
+                        val urls = SoundLoader.extractMp3Urls(m3uPath)
                         if (urls.isNotEmpty()) {
                             totalChunks = urls.size
                             SoundLoader.mMp3Urls = urls.toMutableList()
-                            Log.d("DownloadReceiver", "Starting download of $totalChunks chunks")
 
                             val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                            urls.forEachIndexed { index, url ->
+                            urls.forEachIndexed { i, url ->
                                 val req = DownloadManager.Request(Uri.parse(url))
-                                req.setMimeType("audio/mpeg")
-                                req.setDestinationInExternalFilesDir(context, "temp", "s$index.mp3")
+                                req.setDestinationInExternalFilesDir(context, "temp", "s$i.mp3")
                                 dm.enqueue(req)
                             }
+                        } else {
+                            finishTrack(context) // Skip empty/failed M3Us
                         }
                     }
                 }
-                // Ignore Thumbnail here too
             }
-            // PHASE 2: Waiting for Chunks
+            // PHASE 2: Check Chunks
             else {
-                // FIX 3: Strict ignoring of Playlist AND Thumbnail IDs
                 if (id != SoundLoader.playlistDownloadId && id != SoundLoader.thumbnailDownloadId) {
                     chunksDownloaded++
-                    Log.d("DownloadReceiver", "Chunk processed. Progress: $chunksDownloaded/$totalChunks")
-
                     if (chunksDownloaded >= totalChunks) {
-                        Log.d("DownloadReceiver", "All chunks done. Locking & Finishing.")
-
-                        // FIX 4: Immediate Lock to prevent Double Entry (Race Condition)
                         totalChunks = 0
                         chunksDownloaded = 0
-
                         finishTrack(context)
                     }
-                } else {
-                    Log.d("DownloadReceiver", "Ignored non-chunk download (ID: $id)")
                 }
             }
         }
@@ -75,26 +61,44 @@ class DownloadReceiver : BroadcastReceiver() {
         val appContext = context.applicationContext
 
         CoroutineScope(Dispatchers.IO).launch {
-            // 1. Concat
-            val privatePath = SoundLoader.concatMp3(SoundLoader.mMp3Urls.size)
+            // Build File
+            val path = SoundLoader.concatMp3(SoundLoader.mMp3Urls.size)
+            SoundLoader.setTags(path)
+            val finalPath = SoundLoader.moveFileToDocuments(path)
 
-            // 2. Tag
-            SoundLoader.setTags(privatePath)
+            if (finalPath.isNotEmpty()) {
+                MediaScannerConnection.scanFile(appContext, arrayOf(finalPath), null, null)
+            }
 
-            // 3. Move
-            val finalPath = SoundLoader.moveFileToDocuments(privatePath)
+            SoundLoader.deleteTempFiles()
 
+            // --- C# STYLE BATCH LOOP ---
             withContext(Dispatchers.Main) {
-                if (finalPath.isNotEmpty()) {
-                    MediaScannerConnection.scanFile(appContext, arrayOf(finalPath), null, null)
-                    Log.d("DownloadReceiver", "Track finished: $finalPath")
+                if (SoundLoader.playlistM3uUrls.isNotEmpty()) {
+                    // 1. Pop Next
+                    SoundLoader.resetVarsForNext()
+                    SoundLoader.mM3uUrl = SoundLoader.playlistM3uUrls.removeAt(0)
+
+                    // 2. Set Metadata for Next Track
+                    if (SoundLoader.playlistTags.isNotEmpty()) {
+                        val tag = SoundLoader.playlistTags.removeAt(0)
+                        SoundLoader.mTitle = tag["title"] ?: "Track"
+                        SoundLoader.mArtist = tag["artist"] ?: "Unknown"
+                        SoundLoader.mThumbnailUrl = tag["artwork_url"] ?: ""
+                        SoundLoader.mThumbnailFilename = if (SoundLoader.mThumbnailUrl.contains(".jpg")) "thumbnail.jpg" else "thumbnail.png"
+                    }
+
+                    // 3. Start Download Service (No scraping needed!)
+                    val nextIntent = Intent(appContext, DownloadService::class.java)
+                    nextIntent.action = "START_DOWNLOAD"
+                    appContext.startService(nextIntent)
+
+                } else {
+                    // Done
+                    val i = Intent("DOWNLOAD_FINISHED")
+                    i.setPackage(appContext.packageName)
+                    appContext.sendBroadcast(i)
                 }
-
-                SoundLoader.deleteTempFiles()
-
-                val i = Intent("DOWNLOAD_FINISHED")
-                i.setPackage(appContext.packageName)
-                appContext.sendBroadcast(i)
             }
         }
     }

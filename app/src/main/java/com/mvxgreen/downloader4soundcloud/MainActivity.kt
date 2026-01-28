@@ -141,7 +141,7 @@ class MainActivity : AppCompatActivity() {
         firebaseAnalytics = FirebaseAnalytics.getInstance(this)
         SoundLoader.prepareFileDirs()
 
-        // init permission launcher
+        // init permissions
         requestNotificationLauncher = registerForActivityResult(
             androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
         ) { isGranted: Boolean ->
@@ -155,6 +155,7 @@ class MainActivity : AppCompatActivity() {
             // --- CHAIN REACTION: NOW REQUEST BATTERY ---
             requestBatteryOptimization()
         }
+        startBackgroundPermissionChain()
 
         initAdMob()
         setupBilling()
@@ -413,34 +414,71 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadMediaData(url: String) {
-        fetchJob = CoroutineScope(Dispatchers.Main).launch {
+        SoundLoader.mStreamUrl = ""
+
+        CoroutineScope(Dispatchers.Main).launch {
             val success = SoundLoader.loadHtml(url)
-
             if (success) {
-                // Populate UI
-                binding.previewTitle.text = SoundLoader.mTitle
-                binding.previewArtist.text = SoundLoader.mArtist
-
+                // Common: Load Image & Widget
                 if (!isDestroyed && !isFinishing) {
-                    Glide.with(this@MainActivity)
-                        .load(SoundLoader.mThumbnailUrl)
-                        .centerCrop()
-                        .into(binding.previewImg)
+                    Glide.with(this@MainActivity).load(SoundLoader.mThumbnailUrl).centerCrop().into(binding.previewImg)
                 }
-
-                // FIX: Load the Extracted Player URL (Widget) to get the correct Client ID [cite: 2]
                 if (SoundLoader.mPlayerUrl.isNotEmpty()) {
-                    SoundLoader.mClientId = ""
-                    Log.d("MainActivity", "Loading Widget URL: ${SoundLoader.mPlayerUrl}")
                     binding.previewWebview.loadUrl(SoundLoader.mPlayerUrl)
-                } else {
-                    Log.e("MainActivity", "Player URL missing")
-                    updateUI(UIState.EMPTY)
                 }
 
+                // SPLIT LOGIC:
+                if (SoundLoader.isPlaylist) {
+                    // 1. PLAYLIST: Update info but WAIT for batch fetch
+                    binding.previewTitle.text = "Playlist: ${SoundLoader.mTitle}"
+                    binding.previewArtist.text = "Loading tracks..."
+                    binding.dlBtn.setImageResource(R.drawable.ic_download)
+
+                    // Stay in LOADING state. The WebView callback will trigger updateUI(PREVIEW).
+                } else {
+                    // 2. SINGLE TRACK: Ready immediately
+                    binding.previewTitle.text = SoundLoader.mTitle
+                    binding.previewArtist.text = SoundLoader.mArtist
+
+                    if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
+                }
             } else {
-                Toast.makeText(this@MainActivity, "Could not load track data", Toast.LENGTH_SHORT).show()
                 updateUI(UIState.EMPTY)
+                Toast.makeText(this@MainActivity, "Load Failed", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun startDownload() {
+        updateUI(UIState.DOWNLOADING)
+
+        if (SoundLoader.isPlaylist) {
+            SoundLoader.isBatchActive = true
+            if (SoundLoader.playlistM3uUrls.isNotEmpty()) {
+                SoundLoader.mM3uUrl = SoundLoader.playlistM3uUrls.removeAt(0)
+                if (SoundLoader.playlistTags.isNotEmpty()) {
+                    val tag = SoundLoader.playlistTags.removeAt(0)
+                    SoundLoader.mTitle = tag["title"] ?: ""
+                    SoundLoader.mArtist = tag["artist"] ?: ""
+                    SoundLoader.mThumbnailUrl = tag["artwork_url"] ?: ""
+                }
+                val intent = Intent(this, DownloadService::class.java)
+                intent.action = "START_DOWNLOAD"
+                startService(intent)
+            } else {
+                Toast.makeText(this, "No downloadable tracks found!", Toast.LENGTH_LONG).show()
+                updateUI(UIState.PREVIEW)
+                SoundLoader.isBatchActive = false
+            }
+        } else {
+            CoroutineScope(Dispatchers.Main).launch {
+                if (SoundLoader.mStreamUrl.isNotEmpty() && SoundLoader.mM3uUrl.isEmpty()) {
+                    val url = "${SoundLoader.mStreamUrl}?client_id=${SoundLoader.mClientId}"
+                    SoundLoader.loadJson(url)
+                }
+                val intent = Intent(this@MainActivity, DownloadService::class.java)
+                intent.action = "START_DOWNLOAD"
+                startService(intent)
             }
         }
     }
@@ -455,34 +493,32 @@ class MainActivity : AppCompatActivity() {
         binding.previewWebview.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                // ... (Existing shortlink logic remains here) ...
             }
 
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url.toString()
 
-                // 1. Check if the URL contains the client_id we need
-                if (url.contains("client_id=") && SoundLoader.mClientId.isEmpty() && SoundLoader.mStreamUrl.isNotEmpty()) {
-
-                    // 2. Extract the Client ID
+                if (url.contains("client_id=") && SoundLoader.mClientId.isEmpty()) {
                     val id = url.substringAfter("client_id=").substringBefore("&")
                     SoundLoader.mClientId = id
-                    Log.d("MainActivity", "Intercepted Client ID: $id")
+                    Log.d("MainActivity", "Intercepted Key: $id")
 
-                    // 3. CALL LOADJSON HERE
-                    // We must jump back to the Main thread to launch the coroutine and update UI
                     CoroutineScope(Dispatchers.Main).launch {
-                        // Construct the authorized JSON URL
-                        val fullUrl = "${SoundLoader.mStreamUrl}?client_id=$id"
-
-                        // Parse the JSON to get the .m3u8 playlist URL
-                        SoundLoader.loadJson(fullUrl)
-
-                        // 4. Now that we have the Playlist URL, we can finish the UI state
-                        if (SoundLoader.isShared) {
-                            startDownloadService()
-                        } else {
-                            updateUI(UIState.PREVIEW)
+                        if (SoundLoader.isPlaylist) {
+                            // Fetch Tracks
+                            val success = SoundLoader.processPlaylistWithKey(id)
+                            if (success) {
+                                // CRITICAL FIX: Now update UI to PREVIEW
+                                binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks Ready"
+                                if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
+                            } else {
+                                Toast.makeText(this@MainActivity, "Playlist fetch failed", Toast.LENGTH_SHORT).show()
+                                updateUI(UIState.EMPTY)
+                            }
+                        } else if (SoundLoader.mStreamUrl.isNotEmpty()) {
+                            val fullUrl = "${SoundLoader.mStreamUrl}?client_id=$id"
+                            SoundLoader.loadJson(fullUrl)
+                            if (SoundLoader.isShared) startDownload()
                         }
                     }
                 }
@@ -493,13 +529,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun startDownloadService() {
         updateUI(UIState.DOWNLOADING)
-        val intent = Intent(this, DownloadService::class.java)
-        intent.action = "START_DOWNLOAD"
-        startService(intent)
+        startDownload()
+        //val intent = Intent(this, DownloadService::class.java)
+        //intent.action = "START_DOWNLOAD"
+        //startService(intent)
     }
 
     private fun updateUI(state: UIState) {
-        // Enable inputs by default
         binding.etMainInput.isEnabled = true
         binding.btnPaste.isEnabled = true
         binding.btnPaste.alpha = 1.0f
@@ -514,42 +550,29 @@ class MainActivity : AppCompatActivity() {
             UIState.LOADING -> {
                 binding.loadingLayout.alpha = 1.0f
                 binding.loadingLayout.visibility = View.VISIBLE
-
                 binding.previewCard.visibility = View.INVISIBLE
                 binding.downloaderCard.visibility = View.INVISIBLE
                 binding.overlayDownloading.visibility = View.GONE
-
-                // Disable Inputs
                 binding.etMainInput.isEnabled = false
                 binding.btnPaste.isEnabled = false
                 binding.btnPaste.alpha = 0.5f
             }
             UIState.PREVIEW -> {
                 binding.loadingLayout.visibility = View.INVISIBLE
-
                 binding.previewCard.alpha = 1.0f
                 binding.previewCard.visibility = View.VISIBLE
-
                 binding.downloaderCard.alpha = 1.0f
                 binding.downloaderCard.visibility = View.VISIBLE
-
                 binding.overlayDownloading.visibility = View.GONE
-
-                // Show Download Button
                 binding.dlBtn.visibility = View.VISIBLE
                 binding.finishBtn.visibility = View.GONE
             }
             UIState.DOWNLOADING -> {
                 binding.loadingLayout.visibility = View.INVISIBLE
-
                 binding.previewCard.visibility = View.VISIBLE
                 binding.downloaderCard.visibility = View.VISIBLE
-
-                binding.overlayDownloading.visibility = View.VISIBLE // Show overlay
-
+                binding.overlayDownloading.visibility = View.VISIBLE
                 binding.dlBtn.visibility = View.INVISIBLE
-
-                // Disable Inputs
                 binding.etMainInput.isEnabled = false
                 binding.btnPaste.isEnabled = false
                 binding.btnPaste.alpha = 0.5f
@@ -558,8 +581,6 @@ class MainActivity : AppCompatActivity() {
                 binding.overlayDownloading.visibility = View.GONE
                 binding.finishBtn.visibility = View.VISIBLE
                 binding.finishBtn.animate().alpha(1.0f)
-
-                logInputEvent("soundloader_finished")
                 incrementSuccessfulRuns()
             }
         }
