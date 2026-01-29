@@ -12,7 +12,7 @@ class MainApplication : Application() {
         SoundLoader.appContext = this
 
         FirebaseApp.initializeApp(this)
-        MobileAds.initialize(this) {}
+        //MobileAds.initialize(this) {}
 
         // Ensure temp dirs exist
         SoundLoader.prepareFileDirs()

@@ -8,6 +8,7 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class DownloadReceiver : BroadcastReceiver() {
     private val TAG = "DownloadReceiver"
@@ -22,7 +23,7 @@ class DownloadReceiver : BroadcastReceiver() {
 
                 val m3uPath = SoundLoader.absPathDocsTemp + SoundLoader.currentM3uFilename
 
-                // Launch a coroutine to do the work (Protected by your Foreground Service)
+                // Launch a coroutine to do the work
                 CoroutineScope(Dispatchers.IO).launch {
                     val urls = SoundLoader.extractMp3Urls(m3uPath)
 
@@ -33,33 +34,53 @@ class DownloadReceiver : BroadcastReceiver() {
                         var failures = false
 
                         // --- DIRECT DOWNLOAD LOOP ---
-                        // This replaces the complex "Enqueue -> Wait" logic
                         urls.forEachIndexed { i, url ->
-                            // Update Notification (Optional, but nice for users)
-                            SoundLoader.updateNotification(context, "Downloading part ${i+1}/${urls.size}", i+1, urls.size, false)
+                            val currentChunk = i + 1
+                            val totalChunks = urls.size
+                            val percent = (currentChunk.toDouble() / totalChunks.toDouble()) * 100.0
+                            val percentStr = percent.toInt().toString()
+                            val progressText = "$percentStr%"
 
+                            // 1. Update Notification
+                            SoundLoader.updateNotification(context, progressText, currentChunk, totalChunks, false)
+
+                            // 2. Update Progress Bar (UI) - NEW ADDITION
+                            val progressIntent = Intent("ACTION_PROGRESS_UPDATE")
+                            progressIntent.putExtra("text", progressText)
+                            progressIntent.putExtra("indeterminate", false)
+                            progressIntent.putExtra("current", currentChunk)
+                            progressIntent.putExtra("total", totalChunks)
+                            progressIntent.setPackage(context.packageName)
+                            context.sendBroadcast(progressIntent)
+
+                            // 3. Perform Download
                             val dest = "${SoundLoader.absPathDocsTemp}s$i.mp3"
                             val success = SoundLoader.downloadFile(url, dest)
                             if (!success) failures = true
                         }
 
                         if (!failures) {
+                            // Optional: Update UI to show processing state before stitching
+                            val processingIntent = Intent("ACTION_PROGRESS_UPDATE")
+                            processingIntent.putExtra("text", "Processing...")
+                            processingIntent.putExtra("indeterminate", true)
+                            processingIntent.setPackage(context.packageName)
+                            context.sendBroadcast(processingIntent)
+
                             finishTrack(context)
                         } else {
                             Log.e(TAG, "Failed to download some chunks.")
-                            // Handle failure or skip track
+                            // TODO log event
                         }
                     }
                 }
             }
-            // We ignore all other IDs because we aren't using DM for chunks anymore!
         }
     }
 
     private fun finishTrack(context: Context) {
         val appContext = context.applicationContext
 
-        // This runs on the same IO scope, so it keeps flowing
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 // 1. Stitch
@@ -78,9 +99,9 @@ class DownloadReceiver : BroadcastReceiver() {
             // 4. Cleanup
             SoundLoader.deleteTempFiles()
 
-            // 5. Next Track Logic (Keep your existing batch logic)
+            // 5. Next Track Logic
             if (SoundLoader.playlistM3uUrls.isNotEmpty()) {
-                kotlinx.coroutines.delay(1000) // Small delay for safety
+                kotlinx.coroutines.delay(1000)
 
                 SoundLoader.resetVarsForNext()
                 SoundLoader.mM3uUrl = SoundLoader.playlistM3uUrls.removeAt(0)
@@ -93,7 +114,6 @@ class DownloadReceiver : BroadcastReceiver() {
                     SoundLoader.mThumbnailFilename = if (SoundLoader.mThumbnailUrl.contains(".jpg")) "thumbnail.jpg" else "thumbnail.png"
                 }
 
-                // Restart Service for the next M3U
                 val nextIntent = Intent(appContext, DownloadService::class.java)
                 nextIntent.action = "START_DOWNLOAD"
                 appContext.startService(nextIntent)
@@ -104,7 +124,6 @@ class DownloadReceiver : BroadcastReceiver() {
                 val stopIntent = Intent(appContext, DownloadService::class.java)
                 appContext.stopService(stopIntent)
 
-                // Broadcast to UI
                 val i = Intent("DOWNLOAD_FINISHED")
                 i.setPackage(appContext.packageName)
                 appContext.sendBroadcast(i)

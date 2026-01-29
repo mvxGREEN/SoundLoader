@@ -35,6 +35,7 @@ import com.mvxgreen.downloader4soundcloud.databinding.DialogUpgradeBinding
 import kotlinx.coroutines.*
 import java.util.regex.Pattern
 import kotlin.toString
+import com.mvxgreen.downloader4soundcloud.BuildConfig
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -47,8 +48,8 @@ class MainActivity : AppCompatActivity() {
     private val bannerIdReal = "ca-app-pub-7417392682402637/2881991548"
 
     // Switch variables (currently using Test IDs)
-    private val interstitialId = interstitialIdTest
-    private val bannerId = bannerIdTest
+    private val interstitialId = if (BuildConfig.DEBUG) interstitialIdTest else interstitialIdReal
+    private val bannerId = if (BuildConfig.DEBUG) bannerIdTest else bannerIdReal
 
     private var mInterstitialAd: InterstitialAd? = null
     private var isAdLoading = false
