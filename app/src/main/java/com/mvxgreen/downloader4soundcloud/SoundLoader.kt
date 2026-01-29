@@ -159,6 +159,30 @@ object SoundLoader {
         } catch (e: SecurityException) {}
     }
 
+    // In SoundLoader.kt, add this function:
+    suspend fun downloadFile(urlStr: String, destPath: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = URL(urlStr)
+            val file = File(destPath)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.connectTimeout = 15000
+            conn.readTimeout = 15000
+            conn.connect()
+
+            if (conn.responseCode in 200..299) {
+                conn.inputStream.use { input ->
+                    java.io.FileOutputStream(file).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                return@withContext true
+            }
+        } catch (e: Exception) {
+            Log.e("SoundLoader", "Download failed: ${e.message}")
+        }
+        return@withContext false
+    }
+
     // The Single-Track Scraper (This works, so we will reuse it in the loop!)
     suspend fun loadHtml(url: String): Boolean = withContext(Dispatchers.IO) {
         mLoadHtmlUrl = url
