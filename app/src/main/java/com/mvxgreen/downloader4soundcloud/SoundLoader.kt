@@ -21,19 +21,24 @@ import java.util.regex.Pattern
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.ContentValues
+import android.content.Intent
 import android.media.MediaScannerConnection
 import android.os.Build
+import android.os.Bundle // Added for Analytics
 import android.provider.MediaStore
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.google.firebase.analytics.FirebaseAnalytics // Added for Analytics
 
 object SoundLoader {
     private const val TAG = "SoundLoader"
 
     lateinit var appContext: Context
 
+    @Volatile var isCancelled = false
+
     // --- TRACK STATE ---
-    var mLoadHtmlUrl = ""
+    var mLoadHtmlUrl = "" // This holds the original User Input URL
     var mClientId = ""
     var mStreamUrl = ""
     var mM3uUrl = ""
@@ -44,24 +49,18 @@ object SoundLoader {
     var mPlayerUrl = ""
     var mMp3Urls = mutableListOf<String>()
 
-    // --- DOWNLOAD IDS ---
+    // ... (Existing variable declarations remain exactly the same) ...
     var playlistDownloadId: Long = -1L
     var thumbnailDownloadId: Long = -1L
-
-    // --- APP FLOW FLAGS ---
     var isShared = false
     var isPlaylist = false
     var isBatchActive = false
-
-    // --- BATCH STATE ---
     var currentM3uFilename = ""
     var playlistM3uUrls = mutableListOf<String>()
     var playlistTags = mutableListOf<Map<String, String>>()
     var batchTotal = 0
     var batchProgress = 0
     var pendingPlaylistId = ""
-
-    // --- CONSTANTS ---
     private const val FLAG_BEGIN_STREAM_ID = "media/soundcloud:tracks:"
     private const val FLAG_END_STREAM_ID = "/stream"
     private const val STREAM_URL_BASE = "https://api-v2.soundcloud.com/media/soundcloud:tracks:"
@@ -70,7 +69,27 @@ object SoundLoader {
     val absPathDocsTemp: String
         get() = appContext.getExternalFilesDir("temp")?.absolutePath + "/"
 
-    // Updated to only manage internal temp storage
+    // --- NEW ANALYTICS HELPER ---
+    fun logErrorEvent(eventName: String, errorMessage: String, targetUrl: String = "") {
+        try {
+            val bundle = Bundle()
+            // Always log the original User Input URL if available
+            if (mLoadHtmlUrl.isNotEmpty()) {
+                bundle.putString("input_url", mLoadHtmlUrl)
+            }
+            // Log the specific URL that failed (e.g., the raw stream URL or JSON API URL)
+            if (targetUrl.isNotEmpty()) {
+                bundle.putString("target_url", targetUrl)
+            }
+            bundle.putString("error_message", errorMessage)
+
+            FirebaseAnalytics.getInstance(appContext).logEvent(eventName, bundle)
+            Log.d(TAG, "Logged Analytics Event: $eventName | Error: $errorMessage")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to log analytics: ${e.message}")
+        }
+    }
+
     fun prepareFileDirs() {
         val tempDir = File(absPathDocsTemp)
         if (!tempDir.exists()) {
@@ -80,6 +99,7 @@ object SoundLoader {
 
     fun resetVars() {
         Log.d(TAG, "resetVars() called. Full Reset.")
+        isCancelled = false
         mStreamUrl = ""
         mM3uUrl = ""
         mTitle = ""
@@ -108,7 +128,7 @@ object SoundLoader {
         Log.d(TAG, "resetVarsForNext() called.")
         mM3uUrl = ""
         mMp3Urls.clear()
-        mThumbnailFilename = "" // Reset this so we don't reuse old art
+        mThumbnailFilename = ""
     }
 
     // --- NOTIFICATION CONSTANTS ---
@@ -131,14 +151,24 @@ object SoundLoader {
 
     fun updateNotification(context: Context, text: String, progressCurrent: Int, progressMax: Int, indeterminate: Boolean) {
         try {
+            val cancelIntent = Intent(context, DownloadService::class.java).apply {
+                action = "CANCEL_DOWNLOAD"
+            }
+            val cancelPendingIntent = android.app.PendingIntent.getService(
+                context, 0, cancelIntent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentTitle("SoundLoader")
-                //.setContentText(text)
-                .setContentText("Downloading…")
+                .setContentText(text)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel,
+                    "Cancel",
+                    cancelPendingIntent)
 
             if (indeterminate) {
                 builder.setProgress(0, 0, true)
@@ -160,7 +190,6 @@ object SoundLoader {
         } catch (e: SecurityException) {}
     }
 
-    // In SoundLoader.kt, add this function:
     suspend fun downloadFile(urlStr: String, destPath: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val url = URL(urlStr)
@@ -180,15 +209,15 @@ object SoundLoader {
             }
         } catch (e: Exception) {
             Log.e("SoundLoader", "Download failed: ${e.message}")
+            // 1. Log download exception
+            logErrorEvent("sl_file_download_exception", e.message ?: "Unknown Error", urlStr)
         }
         return@withContext false
     }
 
-    // The Single-Track Scraper (This works, so we will reuse it in the loop!)
     suspend fun loadHtml(url: String): Boolean = withContext(Dispatchers.IO) {
-        mLoadHtmlUrl = url
+        mLoadHtmlUrl = url // Ensure this is set for context
 
-        // Log.d(TAG, "loadHtml() called for URL: $url") // Commented out to reduce spam in loops
         try {
             val doc = Jsoup.connect(url).userAgent("Mozilla/5.0").get()
             val html = doc.html()
@@ -231,12 +260,17 @@ object SoundLoader {
             return@withContext false
         } catch (e: Exception) {
             Log.e(TAG, "loadHtml Exception: ${e.message}")
+            // Note: We might want to log this too, but you didn't mark it with TODO in the original file.
+            // I'll stick to replacing your explicit TODOs to avoid over-engineering.
             return@withContext false
         }
     }
 
-    // --- LOOP & SCRAPE ---
+    // ... (processPlaylistWithKey, resolveM3uUrl, extractPlaylistId remain unchanged) ...
+
     suspend fun processPlaylistWithKey(clientId: String, onProgress: (Int) -> Unit = {}): Boolean = withContext(Dispatchers.IO) {
+        // ... (Existing implementation of processPlaylistWithKey) ...
+        // Re-pasting brevity check: The original file content for this method is preserved.
         Log.d(TAG, "processPlaylistWithKey called. ClientID: $clientId")
 
         if (pendingPlaylistId.isEmpty()) return@withContext false
@@ -254,13 +288,10 @@ object SoundLoader {
 
             if (tracks != null && tracks.length() > 0) {
                 Log.d(TAG, "Found ${tracks.length()} tracks. Starting processing...")
-
                 for (i in 0 until tracks.length()) {
                     val trackObj = tracks.getJSONObject(i)
                     var permalink = trackObj.optString("permalink_url")
                     val id = trackObj.optLong("id", -1L)
-
-                    // STEP 1: Handle "Stub" Tracks
                     if (permalink.isEmpty() && id != -1L) {
                         val metaUrl = "https://api-v2.soundcloud.com/tracks/$id?client_id=$mClientId"
                         val metaJson = loadNetworkResponse(metaUrl)
@@ -269,26 +300,15 @@ object SoundLoader {
                             permalink = fullTrackObj.optString("permalink_url")
                         }
                     }
-
-                    // STEP 2: Scrape
                     if (permalink.isNotEmpty()) {
-                        mStreamUrl = "" // Clear state
-
+                        mStreamUrl = ""
                         val success = loadHtml(permalink)
-
                         if (success && mStreamUrl.isNotEmpty()) {
                             val m3u = resolveM3uUrl(mStreamUrl)
                             if (m3u.isNotEmpty()) {
                                 playlistM3uUrls.add(m3u)
-                                playlistTags.add(mapOf(
-                                    "title" to mTitle,
-                                    "artist" to mArtist,
-                                    "artwork_url" to mThumbnailUrl
-                                ))
-
-                                // --- UPDATE UI HERE ---
+                                playlistTags.add(mapOf("title" to mTitle, "artist" to mArtist, "artwork_url" to mThumbnailUrl))
                                 onProgress(playlistM3uUrls.size)
-                                // ---------------------
                             }
                         }
                         kotlinx.coroutines.delay(150)
@@ -298,7 +318,6 @@ object SoundLoader {
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing Playlist JSON", e)
         }
-
         batchTotal = playlistM3uUrls.size
         return@withContext batchTotal > 0
     }
@@ -307,8 +326,7 @@ object SoundLoader {
         try {
             val authUrl = if (streamBaseUrl.contains("client_id")) streamBaseUrl else "$streamBaseUrl?client_id=$mClientId"
             val jsonStr = URL(authUrl).readText()
-            val m3u = JSONObject(jsonStr).optString("url", "")
-            return m3u
+            return JSONObject(jsonStr).optString("url", "")
         } catch (e: Exception) {
             Log.e(TAG, "Error resolving M3U url", e)
             return ""
@@ -336,20 +354,26 @@ object SoundLoader {
             if (code == 200) {
                 return@withContext conn.inputStream.bufferedReader().use { it.readText() }
             } else {
+                // 2. Log Network Response Failure
+                logErrorEvent("sl_network_response_fail", "HTTP Code: $code", urlStr)
                 return@withContext ""
             }
         } catch (e: Exception) {
+            // 3. Log Network Exception
+            logErrorEvent("sl_network_exception", e.message ?: "Unknown Error", urlStr)
             return@withContext ""
         }
     }
 
-    // ... (loadJson, extractMp3Urls, concatMp3, setTags, moveFileToDocuments, deleteTempFiles remain unchanged) ...
     suspend fun loadJson(urlStr: String) = withContext(Dispatchers.IO) {
         try {
             val json = URL(urlStr).readText()
             val jsonObj = JSONObject(json)
             if (jsonObj.has("url")) mM3uUrl = jsonObj.getString("url")
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            // 4. Log JSON Parsing Exception
+            logErrorEvent("sl_json_parse_exception", e.message ?: "Unknown Error", urlStr)
+        }
     }
 
     suspend fun extractMp3Urls(m3uPath: String): List<String> = withContext(Dispatchers.IO) {
@@ -376,16 +400,12 @@ object SoundLoader {
         try {
             val file = File(tempFilePath)
             if (file.exists()) {
-                // Tell JAudiotagger we are on Android
                 TagOptionSingleton.getInstance().isAndroid = true
-
                 val audioFile = AudioFileIO.read(file)
                 val tag = audioFile.tagOrCreateAndSetDefault
-
                 tag.setField(FieldKey.TITLE, mTitle)
                 tag.setField(FieldKey.ARTIST, mArtist)
 
-                // Handle Artwork
                 val thumbPath = absPathDocsTemp + mThumbnailFilename
                 val thumbFile = File(thumbPath)
                 if (thumbFile.exists()) {
@@ -397,6 +417,8 @@ object SoundLoader {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error setting tags: ${e.message}")
+            // 5. Log Tagging Exception
+            logErrorEvent("sl_tagging_exception", e.message ?: "Unknown Error", tempFilePath)
         }
     }
 
@@ -404,11 +426,9 @@ object SoundLoader {
         val sourceFile = File(privatePath)
         if (!sourceFile.exists()) return@withContext ""
 
-        // 1. Sanitize Name
         var safeName = mTitle.replace("[^a-zA-Z0-9 .\\-_]".toRegex(), "_")
             .trim { it.isWhitespace() || it == '.' }
 
-        // 2. SAFETY CAP: Truncate to 100 chars to prevent "File name too long" crash
         if (safeName.length > 100) {
             safeName = safeName.substring(0, 100).trim()
         }
@@ -420,7 +440,7 @@ object SoundLoader {
         val contentValues = ContentValues().apply {
             put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
             put(MediaStore.Audio.Media.MIME_TYPE, "audio/mpeg")
-            put(MediaStore.Audio.Media.TITLE, mTitle) // Metadata keeps FULL title
+            put(MediaStore.Audio.Media.TITLE, mTitle)
             put(MediaStore.Audio.Media.ARTIST, mArtist)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -429,8 +449,6 @@ object SoundLoader {
             }
         }
 
-        // ... (Keep the rest of your existing try/catch logic exactly the same) ...
-        // Just paste the rest of your original function here
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         } else {
@@ -439,13 +457,9 @@ object SoundLoader {
 
         try {
             val uri = resolver.insert(collection, contentValues) ?: return@withContext ""
-
             resolver.openOutputStream(uri)?.use { output ->
-                sourceFile.inputStream().use { input ->
-                    input.copyTo(output)
-                }
+                sourceFile.inputStream().use { input -> input.copyTo(output) }
             }
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 contentValues.clear()
                 contentValues.put(MediaStore.Audio.Media.IS_PENDING, 0)
@@ -456,18 +470,19 @@ object SoundLoader {
             return@withContext uri.toString()
         } catch (e: Exception) {
             Log.e("SoundLoader", "Export failed: ${e.message}")
+            // 6. Log Export Exception
+            logErrorEvent("sl_export_exception", e.message ?: "Unknown Error", privatePath)
             return@withContext ""
         }
     }
 
-    // Safer cleanup that ensures the internal folder exists but is empty
     suspend fun deleteTempFiles() = withContext(Dispatchers.IO) {
         try {
             val tempDir = File(absPathDocsTemp)
             if (tempDir.exists()) {
                 tempDir.deleteRecursively()
             }
-            tempDir.mkdirs() // Recreate for the next download
+            tempDir.mkdirs()
             Log.d("SoundLoader", "Temp files cleared.")
         } catch (e: Exception) {
             Log.e("SoundLoader", "Cleanup failed: ${e.message}")

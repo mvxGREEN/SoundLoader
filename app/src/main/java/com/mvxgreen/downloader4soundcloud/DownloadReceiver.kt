@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.mvxgreen.downloader4soundcloud.SoundLoader.isCancelled
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -44,7 +45,7 @@ class DownloadReceiver : BroadcastReceiver() {
                             // 1. Update Notification
                             SoundLoader.updateNotification(context, progressText, currentChunk, totalChunks, false)
 
-                            // 2. Update Progress Bar (UI) - NEW ADDITION
+                            // 2. Update Progress Bar (UI)
                             val progressIntent = Intent("ACTION_PROGRESS_UPDATE")
                             progressIntent.putExtra("text", progressText)
                             progressIntent.putExtra("indeterminate", false)
@@ -59,18 +60,22 @@ class DownloadReceiver : BroadcastReceiver() {
                             if (!success) failures = true
                         }
 
-                        if (!failures) {
+                        if (!failures && !isCancelled) {
                             // Optional: Update UI to show processing state before stitching
                             val processingIntent = Intent("ACTION_PROGRESS_UPDATE")
-                            processingIntent.putExtra("text", "Processing...")
+                            processingIntent.putExtra("text", "Processing…")
                             processingIntent.putExtra("indeterminate", true)
                             processingIntent.setPackage(context.packageName)
                             context.sendBroadcast(processingIntent)
 
                             finishTrack(context)
-                        } else {
+                        } else if (failures) {
                             Log.e(TAG, "Failed to download some chunks.")
-                            // TODO log event
+                            // 7. Log chunk download failure
+                            // Uses SoundLoader.mM3uUrl as target, since specific chunk URL is less helpful than the source M3U
+                            SoundLoader.logErrorEvent("sl_chunk_download_fail", "Failed to download ${urls.size} chunks", SoundLoader.mM3uUrl)
+                        } else {
+                            Log.d(TAG, "Download Cancelled by User. Stopping loop.")
                         }
                     }
                 }
@@ -101,7 +106,12 @@ class DownloadReceiver : BroadcastReceiver() {
 
             // 5. Next Track Logic
             if (SoundLoader.playlistM3uUrls.isNotEmpty()) {
-                kotlinx.coroutines.delay(1000)
+                kotlinx.coroutines.delay(333)
+
+                if (SoundLoader.isCancelled) {
+                    Log.d(TAG, "Download Cancelled by User. Stopping loop.")
+                    return@launch // Stop this coroutine immediately
+                }
 
                 SoundLoader.resetVarsForNext()
                 SoundLoader.mM3uUrl = SoundLoader.playlistM3uUrls.removeAt(0)

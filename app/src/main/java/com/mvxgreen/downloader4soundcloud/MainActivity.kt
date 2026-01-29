@@ -83,10 +83,15 @@ class MainActivity : AppCompatActivity() {
 
     private val progressReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            val text = intent?.getStringExtra("text") ?: "Downloading..."
+            var text = intent?.getStringExtra("text") ?: "Downloading…"
             val isIndeterminate = intent?.getBooleanExtra("indeterminate", true) ?: true
             val current = intent?.getIntExtra("current", 0) ?: 0
             val total = intent?.getIntExtra("total", 0) ?: 100
+
+            if (SoundLoader.isPlaylist && SoundLoader.batchTotal > 0) {
+                // add track # to progress text
+                text += " (${current}/${SoundLoader.batchTotal})"
+            }
 
             // Update TextView
             // Note: We need to bind this view if not in binding (it is in binding now due to XML change)
@@ -474,7 +479,9 @@ class MainActivity : AppCompatActivity() {
                 binding.loadingLayout.visibility = View.INVISIBLE
                 binding.previewCard.visibility = View.INVISIBLE
                 binding.downloaderCard.visibility = View.INVISIBLE
-                binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
+                binding.overlayDownloading.visibility = View.INVISIBLE
+
+                binding.progressLabel.text = ""
             }
             UIState.LOADING -> {
                 Log.d("MainActivity", "sl_ui_loading")
@@ -598,8 +605,8 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("com.mvxgreen.prefs", Context.MODE_PRIVATE)
         val currentCount = prefs.getInt("SUCCESS_RUNS", 0) + 1
         prefs.edit().putInt("SUCCESS_RUNS", currentCount).apply()
-        if (currentCount > 0 && currentCount % 6 == 0) {
-            if ((currentCount / 6) % 2 != 0) {
+        if (currentCount > 0 && currentCount % 4 == 0) {
+            if ((currentCount / 4) % 2 != 0) {
                 if (!prefs.getBoolean("IS_GOLD", false)) showUpgradeDialog()
             } else showRateDialog()
         }

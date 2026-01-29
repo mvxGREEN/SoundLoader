@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">SoundLoader</string>
-    <string name="paste_url">Paste URL…</string>
+    <string name="paste_url">Paste Link…</string>
     <string name="clear_button">clear button</string>
     <string name="downloading">Downloading…</string>
     <string name="album_art">Album Art</string>

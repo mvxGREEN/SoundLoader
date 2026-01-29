@@ -63,16 +63,23 @@ class DownloadService : Service() {
         if (intent?.action == "START_DOWNLOAD") {
             Log.d(TAG, "onStartCommand: START_DOWNLOAD received")
 
+            val cancelIntent = Intent(this, DownloadService::class.java).apply {
+                action = "CANCEL_DOWNLOAD"
+            }
+            val cancelPendingIntent = android.app.PendingIntent.getService(
+                this, 0, cancelIntent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+
             // 4. Acquire the lock immediately
             if (wakeLock?.isHeld == false) {
                 wakeLock?.acquire(60 * 60 * 1000L) // Safety timeout: 1 hour
                 Log.d(TAG, "WakeLock Acquired for Batch")
             }
 
-            // ... (Your existing notification code remains exactly the same) ...
             SoundLoader.createNotificationChannel(this)
 
-            var progressText = "Downloading..."
+            var progressText = ""
             var isIndeterminate = true
             var current = 0
             var total = 0
@@ -87,10 +94,13 @@ class DownloadService : Service() {
             val builder = androidx.core.app.NotificationCompat.Builder(this, SoundLoader.CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentTitle("SoundLoader")
-                .setContentText(progressText)
                 .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPendingIntent)
+
+            if (!progressText.isEmpty())
+                builder.setContentText(progressText)
 
             if (isIndeterminate) {
                 builder.setProgress(0, 0, true)
@@ -124,9 +134,26 @@ class DownloadService : Service() {
             }
         }
         else if (intent?.action == "CANCEL_DOWNLOAD") {
-            // Handle cancel button if you added it
+            Log.d(TAG, "User requested cancellation")
+
+            // 1. Set the flag to stop the loops in DownloadReceiver
+            SoundLoader.isCancelled = true
+
+            // 2. Clear Notification
             stopForeground(STOP_FOREGROUND_REMOVE)
+
+            // 3. Stop Service
             stopSelf()
+
+            // 4. Cleanup Temp Files (Optional but recommended)
+            CoroutineScope(Dispatchers.IO).launch {
+                SoundLoader.deleteTempFiles()
+            }
+
+            // 5. Update UI (Broadcast)
+            val i = Intent("DOWNLOAD_FINISHED") // Reuse your existing finish receiver to reset UI
+            i.setPackage(packageName)
+            sendBroadcast(i)
         }
 
         return START_STICKY
