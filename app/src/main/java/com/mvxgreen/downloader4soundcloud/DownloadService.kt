@@ -4,7 +4,9 @@ import android.app.DownloadManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.Uri
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
@@ -21,10 +23,10 @@ class DownloadService : Service() {
         if (intent?.action == "START_DOWNLOAD") {
             Log.d(TAG, "onStartCommand: START_DOWNLOAD received")
 
-            // Ensure Channel Exists
+            // 1. Create Notification Channel
             SoundLoader.createNotificationChannel(this)
 
-            // Calculate Progress
+            // 2. Prepare Notification Data
             var progressText = "Downloading..."
             var isIndeterminate = true
             var current = 0
@@ -37,10 +39,29 @@ class DownloadService : Service() {
                 isIndeterminate = false
             }
 
-            // 1. Update Notification
-            SoundLoader.updateNotification(this, progressText, current, total, isIndeterminate)
+            // 3. START FOREGROUND (Fixes Background Pausing)
+            // We create the notification immediately so the service is "promoted"
+            val notification = androidx.core.app.NotificationCompat.Builder(this, SoundLoader.CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle("SoundLoader")
+                .setContentText(progressText)
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
+                .setOngoing(true)
+                .build()
 
-            // 2. Broadcast to MainActivity
+            // This tells Android: "Do not kill this app even if the screen is off"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    SoundLoader.NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(SoundLoader.NOTIFICATION_ID, notification)
+            }
+
+            // 4. Update UI
+            SoundLoader.updateNotification(this, progressText, current, total, isIndeterminate)
             val progressIntent = Intent("ACTION_PROGRESS_UPDATE")
             progressIntent.putExtra("text", progressText)
             progressIntent.putExtra("indeterminate", isIndeterminate)
@@ -53,35 +74,39 @@ class DownloadService : Service() {
                 startDownload()
             }
         }
-        return START_NOT_STICKY
+        return START_STICKY // Restart if killed
     }
 
     private suspend fun startDownload() {
         val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
-        // 1. Generate Unique Name (Crucial for the "Duplicate Audio" fix)
+        // 1. Generate Unique Name for M3U
         val uniqueName = "playlist_${System.currentTimeMillis()}.m3u"
         SoundLoader.currentM3uFilename = uniqueName
-        Log.d(TAG, "Generated Unique M3U Name: $uniqueName")
 
-        // 2. Clear temp files
-        SoundLoader.deleteTempFiles()
+        // --- CRITICAL FIX: REMOVED deleteTempFiles() ---
+        // We do NOT delete files here. The Receiver handles cleanup after success.
+        // Deleting here kills batch downloads.
+        SoundLoader.prepareFileDirs()
 
-        // 3. Enqueue...
+        // 2. Enqueue M3U
         if (SoundLoader.mM3uUrl.isNotEmpty()) {
-            Log.d(TAG, "Enqueueing M3U Download: ${SoundLoader.mM3uUrl}")
             val request = DownloadManager.Request(Uri.parse(SoundLoader.mM3uUrl))
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
-            request.setDestinationInExternalFilesDir(this, "temp", uniqueName) // Use Unique Name
+            request.setDestinationInExternalFilesDir(this, "temp", uniqueName)
             SoundLoader.playlistDownloadId = downloadManager.enqueue(request)
-        } else {
-            Log.e(TAG, "mM3uUrl is empty! Cannot start download.")
         }
 
+        // 3. Enqueue Thumbnail with UNIQUE Name (Fixes wrong art / file lock)
         if (SoundLoader.mThumbnailUrl.isNotEmpty()) {
+            // Create a unique name for this specific track's art
+            val thumbExt = if (SoundLoader.mThumbnailUrl.contains(".png")) "png" else "jpg"
+            val uniqueThumb = "thumb_${System.currentTimeMillis()}.$thumbExt"
+            SoundLoader.mThumbnailFilename = uniqueThumb
+
             val thumbReq = DownloadManager.Request(Uri.parse(SoundLoader.mThumbnailUrl))
             thumbReq.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
-            thumbReq.setDestinationInExternalFilesDir(this, "temp", SoundLoader.mThumbnailFilename)
+            thumbReq.setDestinationInExternalFilesDir(this, "temp", uniqueThumb)
             SoundLoader.thumbnailDownloadId = downloadManager.enqueue(thumbReq)
         }
     }

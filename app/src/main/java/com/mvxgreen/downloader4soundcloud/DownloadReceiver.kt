@@ -145,7 +145,10 @@ class DownloadReceiver : BroadcastReceiver() {
 
             } else {
                 Log.d(TAG, "Batch Finished. Broadcasting DONE.")
-                SoundLoader.cancelNotification(appContext)
+
+                val stopIntent = Intent(appContext, DownloadService::class.java)
+                appContext.stopService(stopIntent)
+
                 withContext(Dispatchers.Main) {
                     val i = Intent("DOWNLOAD_FINISHED")
                     i.setPackage(appContext.packageName)

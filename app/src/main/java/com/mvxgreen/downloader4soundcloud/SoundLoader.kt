@@ -105,9 +105,10 @@ object SoundLoader {
     }
 
     fun resetVarsForNext() {
-        Log.d(TAG, "resetVarsForNext() called. Preparing for next track.")
+        Log.d(TAG, "resetVarsForNext() called.")
         mM3uUrl = ""
         mMp3Urls.clear()
+        mThumbnailFilename = "" // Reset this so we don't reuse old art
     }
 
     // --- NOTIFICATION CONSTANTS ---
@@ -378,27 +379,33 @@ object SoundLoader {
         val sourceFile = File(privatePath)
         if (!sourceFile.exists()) return@withContext ""
 
-        val safeName = mTitle.replace("[^a-zA-Z0-9 .\\-_]".toRegex(), "_")
+        // 1. Sanitize Name
+        var safeName = mTitle.replace("[^a-zA-Z0-9 .\\-_]".toRegex(), "_")
             .trim { it.isWhitespace() || it == '.' }
-            .ifEmpty { "track" }
-        val displayName = "$safeName.mp3"
 
+        // 2. SAFETY CAP: Truncate to 100 chars to prevent "File name too long" crash
+        if (safeName.length > 100) {
+            safeName = safeName.substring(0, 100).trim()
+        }
+        if (safeName.isEmpty()) safeName = "track_${System.currentTimeMillis()}"
+
+        val displayName = "$safeName.mp3"
         val resolver = appContext.contentResolver
 
-        // 1. Set up Metadata
         val contentValues = ContentValues().apply {
             put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
             put(MediaStore.Audio.Media.MIME_TYPE, "audio/mpeg")
-            put(MediaStore.Audio.Media.TITLE, mTitle)
+            put(MediaStore.Audio.Media.TITLE, mTitle) // Metadata keeps FULL title
             put(MediaStore.Audio.Media.ARTIST, mArtist)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+ uses Scoped Storage paths
                 put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MUSIC}/SoundLoader")
                 put(MediaStore.Audio.Media.IS_PENDING, 1)
             }
         }
 
+        // ... (Keep the rest of your existing try/catch logic exactly the same) ...
+        // Just paste the rest of your original function here
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         } else {
@@ -419,10 +426,8 @@ object SoundLoader {
                 contentValues.put(MediaStore.Audio.Media.IS_PENDING, 0)
                 resolver.update(uri, contentValues, null, null)
             } else {
-                // Legacy: Manually trigger MediaScanner for older devices
                 MediaScannerConnection.scanFile(appContext, arrayOf(sourceFile.absolutePath), null, null)
             }
-
             return@withContext uri.toString()
         } catch (e: Exception) {
             Log.e("SoundLoader", "Export failed: ${e.message}")
