@@ -100,11 +100,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-    private val downloadReceiver = DownloadReceiver()
+    //private val downloadReceiver = DownloadReceiver()
     private val finishReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             updateUI(UIState.FINISHED)
-            Toast.makeText(context, "Saved to Documents!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Saved to Music!", Toast.LENGTH_SHORT).show()
             if (SoundLoader.isShared) {
                 SoundLoader.isShared = false
                 Handler(Looper.getMainLooper()).postDelayed({ finish() }, 700)
@@ -144,7 +144,7 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
 
         ContextCompat.registerReceiver(this, progressReceiver, IntentFilter("ACTION_PROGRESS_UPDATE"), ContextCompat.RECEIVER_NOT_EXPORTED)
-        ContextCompat.registerReceiver(this, downloadReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), ContextCompat.RECEIVER_EXPORTED)
+        //ContextCompat.registerReceiver(this, downloadReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), ContextCompat.RECEIVER_EXPORTED)
         ContextCompat.registerReceiver(this, finishReceiver, IntentFilter("DOWNLOAD_FINISHED"), ContextCompat.RECEIVER_NOT_EXPORTED)
 
         updateUI(UIState.EMPTY)
@@ -270,7 +270,7 @@ class MainActivity : AppCompatActivity() {
             SoundLoader.isPlaylist = true
 
             // CHECK SUBSCRIPTION
-            val prefs = getSharedPreferences("com.xxxgreen.mvx.prefs", Context.MODE_PRIVATE)
+            val prefs = getSharedPreferences("com.mvxgreen.prefs", Context.MODE_PRIVATE)
             val isGold = prefs.getBoolean("IS_GOLD", false)
 
             if (!isGold) {
@@ -585,7 +585,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showInterstitial() {
-        val prefs = getSharedPreferences("com.xxxgreen.mvx.prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("com.mvxgreen.prefs", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("IS_GOLD", false)) {
             mInterstitialAd?.show(this) ?: loadInterstitialAd()
         }
@@ -594,7 +594,7 @@ class MainActivity : AppCompatActivity() {
     // --- DIALOGS & BILLING ---
 
     private fun incrementSuccessfulRuns() {
-        val prefs = getSharedPreferences("com.xxxgreen.mvx.prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("com.mvxgreen.prefs", Context.MODE_PRIVATE)
         val currentCount = prefs.getInt("SUCCESS_RUNS", 0) + 1
         prefs.edit().putInt("SUCCESS_RUNS", currentCount).apply()
         if (currentCount > 0 && currentCount % 6 == 0) {
@@ -670,7 +670,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveGoldStatus(isGold: Boolean) {
-        val prefs = getSharedPreferences("com.xxxgreen.mvx.prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("com.mvxgreen.prefs", Context.MODE_PRIVATE)
         prefs.edit().putBoolean("IS_GOLD", isGold).apply()
         checkSubscriptionAndLoadAds(isGold)
         runOnUiThread { updateUpgradeIcon(isGold) }
@@ -708,6 +708,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy();
         unregisterReceiver(progressReceiver)
-        unregisterReceiver(downloadReceiver)
+        //unregisterReceiver(downloadReceiver)
         unregisterReceiver(finishReceiver) }
 }

@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.PowerManager
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,51 +21,55 @@ class DownloadReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == DownloadManager.ACTION_DOWNLOAD_COMPLETE) {
             val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-            Log.d(TAG, "Download Complete ID: $id. TotalChunks: $totalChunks")
+            // Log.d(TAG, "Download Complete ID: $id. TotalChunks: $totalChunks")
 
             if (totalChunks == 0) {
                 if (id == SoundLoader.playlistDownloadId) {
                     Log.d(TAG, "M3U Download Complete. Parsing...")
                     chunksDownloaded = 0
 
-                    // CORRECTION: Use the unique filename from SoundLoader
+                    // [FIX 1] Acquire WakeLock for M3U Parsing
+                    // The CPU might sleep between download finish and parsing. We must hold it awake.
+                    val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                    val wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SoundLoader::M3ULock")
+                    wakeLock.acquire(30 * 1000L) // 30 second timeout
+
                     val m3uPath = SoundLoader.absPathDocsTemp + SoundLoader.currentM3uFilename
-                    Log.d(TAG, "Reading M3U from: $m3uPath")
 
                     CoroutineScope(Dispatchers.IO).launch {
-                        val urls = SoundLoader.extractMp3Urls(m3uPath)
-                        if (urls.isNotEmpty()) {
-                            totalChunks = urls.size
-                            SoundLoader.mMp3Urls = urls.toMutableList()
-                            Log.d(TAG, "M3U Parsed. Found $totalChunks chunks. Enqueueing...")
+                        try {
+                            val urls = SoundLoader.extractMp3Urls(m3uPath)
+                            if (urls.isNotEmpty()) {
+                                totalChunks = urls.size
+                                SoundLoader.mMp3Urls = urls.toMutableList()
+                                Log.d(TAG, "M3U Parsed. Found $totalChunks chunks. Enqueueing...")
 
-                            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                                val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
-                            // Enqueue all chunks (IO is fine for this loop)
-                            urls.forEachIndexed { i, url ->
-                                val req = DownloadManager.Request(Uri.parse(url))
-                                req.setDestinationInExternalFilesDir(context, "temp", "s$i.mp3")
-                                req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
-                                dm.enqueue(req)
+                                urls.forEachIndexed { i, url ->
+                                    val req = DownloadManager.Request(Uri.parse(url))
+                                    req.setDestinationInExternalFilesDir(context, "temp", "s$i.mp3")
+                                    req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
+                                    dm.enqueue(req)
+                                }
+                            } else {
+                                Log.e(TAG, "M3U was empty or failed to parse.")
+                                finishTrack(context)
                             }
-                        } else {
-                            Log.e(TAG, "M3U was empty or failed to parse.")
-                            finishTrack(context) // Skip empty/failed M3Us
+                        } finally {
+                            // Release lock only after chunks are enqueued
+                            if (wakeLock.isHeld) wakeLock.release()
                         }
                     }
                 }
             }
             else {
                 if (id != SoundLoader.playlistDownloadId && id != SoundLoader.thumbnailDownloadId) {
-
-                    // CORRECTION: Check for success!
                     if (!isDownloadSuccessful(context, id)) {
                         hasFailures = true
-                        Log.e(TAG, "Chunk $id FAILED. Marking track as failure.")
                     }
 
                     chunksDownloaded++
-                    // Log.d(TAG, "Chunk $chunksDownloaded / $totalChunks downloaded") // Optional verbose
 
                     if (chunksDownloaded >= totalChunks) {
                         Log.d(TAG, "All chunks finished. Proceeding to stitch.")
@@ -79,81 +84,89 @@ class DownloadReceiver : BroadcastReceiver() {
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val query = DownloadManager.Query().setFilterById(id)
 
-        // .use block automatically calls close() when the block exits (even on return)
-        dm.query(query)?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
-                if (statusIndex >= 0) {
-                    return cursor.getInt(statusIndex) == DownloadManager.STATUS_SUCCESSFUL
+        try {
+            dm.query(query)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                    if (statusIndex >= 0) {
+                        return cursor.getInt(statusIndex) == DownloadManager.STATUS_SUCCESSFUL
+                    }
                 }
             }
+        } catch (e: Exception) {
+            // Handle edge case where download might be cancelled/removed
         }
         return false
     }
 
     private fun finishTrack(context: Context) {
         val appContext = context.applicationContext
+
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SoundLoader::StitchLock")
+        // Acquire lock for 10 minutes (covers stitching + delay + next track setup)
+        wakeLock.acquire(10 * 60 * 1000L)
+
         CoroutineScope(Dispatchers.IO).launch {
-            if (!hasFailures && totalChunks > 0) {
-                // 1. Stitch chunks into one temp file
-                val tempPath = SoundLoader.concatMp3(SoundLoader.mMp3Urls.size)
-
-                // 2. Apply ID3 Tags to the temp file while we still have direct File access
-                SoundLoader.setTags(tempPath)
-
-                // 3. Move the tagged file to the public Documents folder via MediaStore
-                val finalUriString = SoundLoader.moveFileToMusic(tempPath)
-
-                if (finalUriString.isNotEmpty()) {
-                    Log.d(TAG, "Track successfully saved to MediaStore: $finalUriString")
-                    // MediaScanner is no longer strictly necessary for MediaStore inserts,
-                    // but it doesn't hurt for older OS versions.
-                }
-            }
-
-            // 2. Cleanup
-            SoundLoader.deleteTempFiles()
-            totalChunks = 0
-            chunksDownloaded = 0
-            hasFailures = false
-
-            // 3. Process Next Track (With Delay)
-            if (SoundLoader.playlistM3uUrls.isNotEmpty()) {
-                val remaining = SoundLoader.playlistM3uUrls.size
-                Log.d(TAG, "Batch active. $remaining tracks remaining.")
-
-                Log.d(TAG, "Waiting 1-3s for rate-limit cooldown...")
-                kotlinx.coroutines.delay(kotlin.random.Random.nextLong(1000, 3000))
-
-                // 4. Setup Next Track
-                SoundLoader.resetVarsForNext()
-                SoundLoader.mM3uUrl = SoundLoader.playlistM3uUrls.removeAt(0)
-
-                if (SoundLoader.playlistTags.isNotEmpty()) {
-                    val tag = SoundLoader.playlistTags.removeAt(0)
-                    SoundLoader.mTitle = tag["title"] ?: "Track"
-                    SoundLoader.mArtist = tag["artist"] ?: "Unknown"
-                    SoundLoader.mThumbnailUrl = tag["artwork_url"] ?: ""
-                    SoundLoader.mThumbnailFilename = if (SoundLoader.mThumbnailUrl.contains(".jpg")) "thumbnail.jpg" else "thumbnail.png"
+            try {
+                // --- STITCHING PHASE ---
+                if (!hasFailures && totalChunks > 0) {
+                    try {
+                        val tempPath = SoundLoader.concatMp3(SoundLoader.mMp3Urls.size)
+                        SoundLoader.setTags(tempPath)
+                        val finalUriString = SoundLoader.moveFileToMusic(tempPath)
+                        if (finalUriString.isNotEmpty()) {
+                            Log.d(TAG, "Track successfully saved to MediaStore: $finalUriString")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Stitching failed: ${e.message}")
+                    }
                 }
 
-                // 5. Start Service
-                Log.d(TAG, "Starting service for next track: ${SoundLoader.mTitle}")
-                val nextIntent = Intent(appContext, DownloadService::class.java)
-                nextIntent.action = "START_DOWNLOAD"
-                appContext.startService(nextIntent)
+                // --- CLEANUP PHASE ---
+                SoundLoader.deleteTempFiles()
+                totalChunks = 0
+                chunksDownloaded = 0
+                hasFailures = false
 
-            } else {
-                Log.d(TAG, "Batch Finished. Broadcasting DONE.")
+                // --- BATCH TRANSITION PHASE ---
+                if (SoundLoader.playlistM3uUrls.isNotEmpty()) {
+                    val remaining = SoundLoader.playlistM3uUrls.size
+                    Log.d(TAG, "Batch active. $remaining tracks remaining.")
 
-                val stopIntent = Intent(appContext, DownloadService::class.java)
-                appContext.stopService(stopIntent)
+                    // [FIX 2] The WakeLock is STILL HELD here, so the CPU won't sleep during delay
+                    kotlinx.coroutines.delay(kotlin.random.Random.nextLong(1000, 3000))
 
-                withContext(Dispatchers.Main) {
-                    val i = Intent("DOWNLOAD_FINISHED")
-                    i.setPackage(appContext.packageName)
-                    appContext.sendBroadcast(i)
+                    SoundLoader.resetVarsForNext()
+                    SoundLoader.mM3uUrl = SoundLoader.playlistM3uUrls.removeAt(0)
+
+                    if (SoundLoader.playlistTags.isNotEmpty()) {
+                        val tag = SoundLoader.playlistTags.removeAt(0)
+                        SoundLoader.mTitle = tag["title"] ?: "Track"
+                        SoundLoader.mArtist = tag["artist"] ?: "Unknown"
+                        SoundLoader.mThumbnailUrl = tag["artwork_url"] ?: ""
+                        SoundLoader.mThumbnailFilename = if (SoundLoader.mThumbnailUrl.contains(".jpg")) "thumbnail.jpg" else "thumbnail.png"
+                    }
+
+                    Log.d(TAG, "Starting service for next track: ${SoundLoader.mTitle}")
+                    val nextIntent = Intent(appContext, DownloadService::class.java)
+                    nextIntent.action = "START_DOWNLOAD"
+                    appContext.startService(nextIntent)
+
+                } else {
+                    Log.d(TAG, "Batch Finished. Broadcasting DONE.")
+                    val stopIntent = Intent(appContext, DownloadService::class.java)
+                    appContext.stopService(stopIntent)
+
+                    withContext(Dispatchers.Main) {
+                        val i = Intent("DOWNLOAD_FINISHED")
+                        i.setPackage(appContext.packageName)
+                        appContext.sendBroadcast(i)
+                    }
                 }
+            } finally {
+                // [FIX 2] Release lock ONLY after everything (including batch setup) is done
+                if (wakeLock.isHeld) wakeLock.release()
             }
         }
     }

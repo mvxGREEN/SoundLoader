@@ -4,11 +4,14 @@ import android.app.DownloadManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -17,16 +20,58 @@ class DownloadService : Service() {
 
     private val TAG = "DownloadService"
 
+    // 1. Create a variable for the WakeLock
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    // Keep the receiver instance alive
+    private val downloadReceiver = DownloadReceiver()
+
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+
+        // 2. Initialize the WakeLock
+        // "PARTIAL_WAKE_LOCK" keeps the CPU running but allows the screen to turn off
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SoundLoader::ServiceBatchLock")
+        wakeLock?.setReferenceCounted(false) // Ensure we don't need to release it multiple times
+
+        Log.d(TAG, "Registering DownloadReceiver in Service")
+        ContextCompat.registerReceiver(
+            this,
+            downloadReceiver,
+            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_EXPORTED
+        )
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            unregisterReceiver(downloadReceiver)
+        } catch (e: Exception) { }
+
+        // 3. Release the WakeLock when the service dies (Batch Finished)
+        if (wakeLock?.isHeld == true) {
+            wakeLock?.release()
+            Log.d(TAG, "Batch Finished. WakeLock Released.")
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "START_DOWNLOAD") {
             Log.d(TAG, "onStartCommand: START_DOWNLOAD received")
 
-            // 1. Create Notification Channel
+            // 4. Acquire the lock immediately
+            if (wakeLock?.isHeld == false) {
+                wakeLock?.acquire(60 * 60 * 1000L) // Safety timeout: 1 hour
+                Log.d(TAG, "WakeLock Acquired for Batch")
+            }
+
+            // ... (Your existing notification code remains exactly the same) ...
             SoundLoader.createNotificationChannel(this)
 
-            // 2. Prepare Notification Data
             var progressText = "Downloading..."
             var isIndeterminate = true
             var current = 0
@@ -39,17 +84,22 @@ class DownloadService : Service() {
                 isIndeterminate = false
             }
 
-            // 3. START FOREGROUND (Fixes Background Pausing)
-            // We create the notification immediately so the service is "promoted"
-            val notification = androidx.core.app.NotificationCompat.Builder(this, SoundLoader.CHANNEL_ID)
+            val builder = androidx.core.app.NotificationCompat.Builder(this, SoundLoader.CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentTitle("SoundLoader")
                 .setContentText(progressText)
                 .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
                 .setOngoing(true)
-                .build()
+                .setOnlyAlertOnce(true)
 
-            // This tells Android: "Do not kill this app even if the screen is off"
+            if (isIndeterminate) {
+                builder.setProgress(0, 0, true)
+            } else {
+                builder.setProgress(total, current, false)
+            }
+
+            val notification = builder.build()
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
                     SoundLoader.NOTIFICATION_ID,
@@ -60,8 +110,7 @@ class DownloadService : Service() {
                 startForeground(SoundLoader.NOTIFICATION_ID, notification)
             }
 
-            // 4. Update UI
-            SoundLoader.updateNotification(this, progressText, current, total, isIndeterminate)
+            // UI Broadcasts
             val progressIntent = Intent("ACTION_PROGRESS_UPDATE")
             progressIntent.putExtra("text", progressText)
             progressIntent.putExtra("indeterminate", isIndeterminate)
@@ -74,22 +123,23 @@ class DownloadService : Service() {
                 startDownload()
             }
         }
-        return START_STICKY // Restart if killed
+        else if (intent?.action == "CANCEL_DOWNLOAD") {
+            // Handle cancel button if you added it
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+
+        return START_STICKY
     }
 
     private suspend fun startDownload() {
         val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        SoundLoader.prepareFileDirs()
 
-        // 1. Generate Unique Name for M3U
+        // M3U Download
         val uniqueName = "playlist_${System.currentTimeMillis()}.m3u"
         SoundLoader.currentM3uFilename = uniqueName
 
-        // --- CRITICAL FIX: REMOVED deleteTempFiles() ---
-        // We do NOT delete files here. The Receiver handles cleanup after success.
-        // Deleting here kills batch downloads.
-        SoundLoader.prepareFileDirs()
-
-        // 2. Enqueue M3U
         if (SoundLoader.mM3uUrl.isNotEmpty()) {
             val request = DownloadManager.Request(Uri.parse(SoundLoader.mM3uUrl))
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
@@ -97,9 +147,8 @@ class DownloadService : Service() {
             SoundLoader.playlistDownloadId = downloadManager.enqueue(request)
         }
 
-        // 3. Enqueue Thumbnail with UNIQUE Name (Fixes wrong art / file lock)
+        // Thumbnail Download
         if (SoundLoader.mThumbnailUrl.isNotEmpty()) {
-            // Create a unique name for this specific track's art
             val thumbExt = if (SoundLoader.mThumbnailUrl.contains(".png")) "png" else "jpg"
             val uniqueThumb = "thumb_${System.currentTimeMillis()}.$thumbExt"
             SoundLoader.mThumbnailFilename = uniqueThumb
