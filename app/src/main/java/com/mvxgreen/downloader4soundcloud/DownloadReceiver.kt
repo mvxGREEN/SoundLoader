@@ -4,7 +4,6 @@ import android.app.DownloadManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.media.MediaScannerConnection
 import android.net.Uri
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
@@ -94,23 +93,22 @@ class DownloadReceiver : BroadcastReceiver() {
 
     private fun finishTrack(context: Context) {
         val appContext = context.applicationContext
-        Log.d(TAG, "finishTrack() called")
-
         CoroutineScope(Dispatchers.IO).launch {
-
-            // 1. Validate & Stitch (Prevents corrupted files)
             if (!hasFailures && totalChunks > 0) {
-                Log.d(TAG, "No failures detected. Stitching MP3...")
-                val path = SoundLoader.concatMp3(SoundLoader.mMp3Urls.size)
-                SoundLoader.setTags(path)
-                val finalPath = SoundLoader.moveFileToDocuments(path)
+                // 1. Stitch chunks into one temp file
+                val tempPath = SoundLoader.concatMp3(SoundLoader.mMp3Urls.size)
 
-                if (finalPath.isNotEmpty()) {
-                    MediaScannerConnection.scanFile(appContext, arrayOf(finalPath), null, null)
-                    Log.d(TAG, "Track saved and scanned: $finalPath")
+                // 2. Apply ID3 Tags to the temp file while we still have direct File access
+                SoundLoader.setTags(tempPath)
+
+                // 3. Move the tagged file to the public Documents folder via MediaStore
+                val finalUriString = SoundLoader.moveFileToMusic(tempPath)
+
+                if (finalUriString.isNotEmpty()) {
+                    Log.d(TAG, "Track successfully saved to MediaStore: $finalUriString")
+                    // MediaScanner is no longer strictly necessary for MediaStore inserts,
+                    // but it doesn't hurt for older OS versions.
                 }
-            } else {
-                Log.e(TAG, "Track skipped: Failures=$hasFailures, TotalChunks=$totalChunks")
             }
 
             // 2. Cleanup

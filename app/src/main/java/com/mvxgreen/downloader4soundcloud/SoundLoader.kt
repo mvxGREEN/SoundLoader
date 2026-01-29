@@ -20,7 +20,10 @@ import java.net.URL
 import java.util.regex.Pattern
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ContentValues
+import android.media.MediaScannerConnection
 import android.os.Build
+import android.provider.MediaStore
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
@@ -64,15 +67,15 @@ object SoundLoader {
     private const val STREAM_URL_BASE = "https://api-v2.soundcloud.com/media/soundcloud:tracks:"
     private const val STREAM_URL_END = "/stream/hls"
 
-    val absPathDocs: String
-        get() = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).absolutePath + "/"
-
     val absPathDocsTemp: String
         get() = appContext.getExternalFilesDir("temp")?.absolutePath + "/"
 
+    // Updated to only manage internal temp storage
     fun prepareFileDirs() {
-        File(absPathDocs).mkdirs()
-        File(absPathDocsTemp).mkdirs()
+        val tempDir = File(absPathDocsTemp)
+        if (!tempDir.exists()) {
+            tempDir.mkdirs()
+        }
     }
 
     fun resetVars() {
@@ -343,45 +346,101 @@ object SoundLoader {
         return@withContext destPath
     }
 
-    suspend fun setTags(filePath: String) = withContext(Dispatchers.IO) {
+    suspend fun setTags(tempFilePath: String) = withContext(Dispatchers.IO) {
         try {
-            val file = File(filePath)
+            val file = File(tempFilePath)
             if (file.exists()) {
+                // Tell JAudiotagger we are on Android
                 TagOptionSingleton.getInstance().isAndroid = true
+
                 val audioFile = AudioFileIO.read(file)
                 val tag = audioFile.tagOrCreateAndSetDefault
+
                 tag.setField(FieldKey.TITLE, mTitle)
                 tag.setField(FieldKey.ARTIST, mArtist)
-                val thumb = File(absPathDocsTemp + mThumbnailFilename)
-                if (thumb.exists()) tag.setField(ArtworkFactory.createArtworkFromFile(thumb))
+
+                // Handle Artwork
+                val thumbPath = absPathDocsTemp + mThumbnailFilename
+                val thumbFile = File(thumbPath)
+                if (thumbFile.exists()) {
+                    tag.setField(ArtworkFactory.createArtworkFromFile(thumbFile))
+                }
+
                 audioFile.commit()
+                Log.d(TAG, "Tags committed successfully to $tempFilePath")
             }
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting tags: ${e.message}")
+        }
     }
 
-    suspend fun moveFileToDocuments(privatePath: String): String = withContext(Dispatchers.IO) {
-        val source = File(privatePath)
-        if (!source.exists()) return@withContext ""
-        val docsDir = File(absPathDocs)
-        docsDir.mkdirs()
+    suspend fun moveFileToMusic(privatePath: String): String = withContext(Dispatchers.IO) {
+        val sourceFile = File(privatePath)
+        if (!sourceFile.exists()) return@withContext ""
 
-        var safeName = mTitle.replace("[^a-zA-Z0-9 .\\-_]".toRegex(), "_")
-        safeName = safeName.trim { it.isWhitespace() || it == '.' }
-        var name = "$safeName.mp3"
-        if(name == ".mp3") name = "track.mp3"
+        val safeName = mTitle.replace("[^a-zA-Z0-9 .\\-_]".toRegex(), "_")
+            .trim { it.isWhitespace() || it == '.' }
+            .ifEmpty { "track" }
+        val displayName = "$safeName.mp3"
 
-        var dest = File(docsDir, name)
-        var i = 1
-        while(dest.exists()) { dest = File(docsDir, name.replace(".mp3", " ($i).mp3")); i++ }
+        val resolver = appContext.contentResolver
 
-        source.copyTo(dest, true)
-        return@withContext dest.absolutePath
+        // 1. Set up Metadata
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
+            put(MediaStore.Audio.Media.MIME_TYPE, "audio/mpeg")
+            put(MediaStore.Audio.Media.TITLE, mTitle)
+            put(MediaStore.Audio.Media.ARTIST, mArtist)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Android 10+ uses Scoped Storage paths
+                put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MUSIC}/SoundLoader")
+                put(MediaStore.Audio.Media.IS_PENDING, 1)
+            }
+        }
+
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        } else {
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        }
+
+        try {
+            val uri = resolver.insert(collection, contentValues) ?: return@withContext ""
+
+            resolver.openOutputStream(uri)?.use { output ->
+                sourceFile.inputStream().use { input ->
+                    input.copyTo(output)
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(MediaStore.Audio.Media.IS_PENDING, 0)
+                resolver.update(uri, contentValues, null, null)
+            } else {
+                // Legacy: Manually trigger MediaScanner for older devices
+                MediaScannerConnection.scanFile(appContext, arrayOf(sourceFile.absolutePath), null, null)
+            }
+
+            return@withContext uri.toString()
+        } catch (e: Exception) {
+            Log.e("SoundLoader", "Export failed: ${e.message}")
+            return@withContext ""
+        }
     }
 
+    // Safer cleanup that ensures the internal folder exists but is empty
     suspend fun deleteTempFiles() = withContext(Dispatchers.IO) {
         try {
-            File(absPathDocsTemp).deleteRecursively()
-            File(absPathDocsTemp).mkdirs()
-        } catch (e: Exception) { }
+            val tempDir = File(absPathDocsTemp)
+            if (tempDir.exists()) {
+                tempDir.deleteRecursively()
+            }
+            tempDir.mkdirs() // Recreate for the next download
+            Log.d("SoundLoader", "Temp files cleared.")
+        } catch (e: Exception) {
+            Log.e("SoundLoader", "Cleanup failed: ${e.message}")
+        }
     }
 }

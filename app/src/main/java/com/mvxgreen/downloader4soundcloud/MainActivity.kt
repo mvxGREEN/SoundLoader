@@ -188,8 +188,9 @@ class MainActivity : AppCompatActivity() {
         binding.btnPaste.setOnClickListener {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = clipboard.primaryClip
-            if (clip != null && clip.itemCount > 0) {
-                val text = clip.getItemAt(0).text.toString()
+            val clipText = clip?.getItemAt(0)?.text
+            if (clip != null && clip.itemCount > 0 && clipText != null) {
+                val text = clipText.toString()
                 binding.etMainInput.setText(text)
                 inputHandler.removeCallbacks(inputRunnable)
                 handleInput(text)
