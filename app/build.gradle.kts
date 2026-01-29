@@ -14,8 +14,8 @@ android {
         applicationId = "com.mvxgreen.downloader4soundcloud"
         minSdk = 24
         targetSdk = 36
-        versionCode = 106
-        versionName = "5.1.2"
+        versionCode = 107
+        versionName = "5.1.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -64,5 +64,5 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     // Image Loading (For Thumbnails)
-    implementation("com.github.bumptech.glide:glide:4.16.0")
+    implementation(libs.glide)
 }

@@ -34,6 +34,7 @@ import com.mvxgreen.downloader4soundcloud.databinding.DialogRateBinding
 import com.mvxgreen.downloader4soundcloud.databinding.DialogUpgradeBinding
 import kotlinx.coroutines.*
 import java.util.regex.Pattern
+import kotlin.toString
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -411,6 +412,12 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                             if (success) {
+                                Log.d("MainActivity", "sl_playlist_fetch_success")
+                                var input_url = binding.etMainInput.text.toString()
+                                if (input_url.contains("http")) {
+                                    input_url = input_url.substringAfter("http")
+                                }
+                                logEvent("sl_playlist_fetch_success", input_url, SoundLoader.mLoadHtmlUrl)
                                 binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks"
                                 updateUI(UIState.PREVIEW)
                                 // if | present, trim title to everything prior
@@ -420,6 +427,12 @@ class MainActivity : AppCompatActivity() {
                                 binding.previewArtist.text = "${SoundLoader.batchTotal} Tracks"
                                 if (SoundLoader.isShared) startDownload() else updateUI(UIState.PREVIEW)
                             } else {
+                                Log.d("MainActivity", "sl_playlist_fetch_fail")
+                                var input_url = binding.etMainInput.text.toString()
+                                if (input_url.contains("http")) {
+                                    input_url = input_url.substringAfter("http")
+                                }
+                                logEvent("sl_playlist_fetch_fail",input_url,  SoundLoader.mLoadHtmlUrl)
                                 Toast.makeText(this@MainActivity, "Playlist fetch failed", Toast.LENGTH_SHORT).show()
                                 updateUI(UIState.EMPTY)
                             }
@@ -446,14 +459,24 @@ class MainActivity : AppCompatActivity() {
         binding.btnPaste.isEnabled = true
         binding.btnPaste.alpha = 1.0f
 
+        // get input_url for analytics event
+        var url = binding.etMainInput.text.toString()
+        if (url.contains("http")) {
+            url = url.substringAfter("http")
+        }
+
         when (state) {
             UIState.EMPTY -> {
+                Log.d("MainActivity", "sl_ui_empty")
+                //logEvent("sl_ui_empty")
                 binding.loadingLayout.visibility = View.INVISIBLE
                 binding.previewCard.visibility = View.INVISIBLE
                 binding.downloaderCard.visibility = View.INVISIBLE
                 binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
             }
             UIState.LOADING -> {
+                Log.d("MainActivity", "sl_ui_loading")
+                logEvent("sl_ui_loading", url, "")
                 binding.loadingLayout.alpha = 1.0f
                 binding.loadingLayout.visibility = View.VISIBLE
                 binding.previewCard.visibility = View.INVISIBLE
@@ -464,6 +487,9 @@ class MainActivity : AppCompatActivity() {
                 binding.btnPaste.alpha = 0.5f
             }
             UIState.PREVIEW -> {
+                Log.d("MainActivity", "sl_ui_preview")
+                logEvent("sl_ui_preview", url, "")
+
                 binding.loadingLayout.visibility = View.INVISIBLE
                 binding.previewCard.alpha = 1.0f
                 binding.previewCard.visibility = View.VISIBLE
@@ -477,6 +503,8 @@ class MainActivity : AppCompatActivity() {
                 showInterstitial()
             }
             UIState.DOWNLOADING -> {
+                Log.d("MainActivity", "sl_ui_downloading")
+                logEvent("sl_ui_downloading", url, "")
                 binding.loadingLayout.visibility = View.INVISIBLE
                 binding.previewCard.visibility = View.VISIBLE
                 binding.downloaderCard.visibility = View.VISIBLE
@@ -487,6 +515,8 @@ class MainActivity : AppCompatActivity() {
                 binding.btnPaste.alpha = 0.5f
             }
             UIState.FINISHED -> {
+                Log.d("MainActivity", "sl_ui_finished")
+                logEvent("sl_ui_finished", url, "")
                 binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
                 binding.finishBtn.visibility = View.VISIBLE
                 binding.finishBtn.animate().alpha(1.0f)
@@ -536,7 +566,11 @@ class MainActivity : AppCompatActivity() {
         isAdLoading = true
         val adRequest = AdRequest.Builder().build()
         InterstitialAd.load(this, interstitialId, adRequest, object : InterstitialAdLoadCallback() {
-            override fun onAdFailedToLoad(adError: LoadAdError) { mInterstitialAd = null; isAdLoading = false }
+            override fun onAdFailedToLoad(adError: LoadAdError) {
+                logEvent("sl_interstitial_fail", "", "")
+                mInterstitialAd = null
+                isAdLoading = false
+            }
             override fun onAdLoaded(interstitialAd: InterstitialAd) {
                 mInterstitialAd = interstitialAd
                 isAdLoading = false
@@ -570,11 +604,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showRateDialog() {
+        logEvent("sl_rate_dialog", "", "")
         val rateBinding = DialogRateBinding.inflate(layoutInflater)
         val dialog = AlertDialog.Builder(this).setView(rateBinding.root).create()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         rateBinding.btnNah.setOnClickListener { dialog.dismiss() }
         rateBinding.btnRate.setOnClickListener {
+            logEvent("sl_rate_click", "", "")
             dialog.dismiss()
             try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName"))) }
             catch (e: ActivityNotFoundException) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName"))) }
@@ -583,11 +619,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showUpgradeDialog() {
+        logEvent("sl_upgrade_show", "", "")
         val dialogBinding = DialogUpgradeBinding.inflate(layoutInflater)
         val dialog = AlertDialog.Builder(this).setView(dialogBinding.root).create()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialogBinding.btnNah.setOnClickListener { dialog.dismiss() }
-        dialogBinding.btnUpgrade.setOnClickListener { dialog.dismiss(); launchBillingFlow() }
+        dialogBinding.btnUpgrade.setOnClickListener {
+            logEvent("sl_upgrade_click", "", "")
+            dialog.dismiss()
+            launchBillingFlow()
+        }
         dialog.show()
     }
 
@@ -635,6 +676,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun launchBillingFlow() {
+        logEvent("sl_billing_launch", "", "")
         if (productDetails != null) {
             val params = BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(productDetails!!).setOfferToken(productDetails!!.subscriptionOfferDetails?.get(0)?.offerToken ?: "").build())).build()
             billingClient.launchBillingFlow(this, params)
@@ -652,6 +694,14 @@ class MainActivity : AppCompatActivity() {
                 upgradeItem.isEnabled = true
             }
         }
+    }
+
+    private fun logEvent(eventName: String, input_url: String?, more: String?) {
+        val bundle = Bundle()
+        if (input_url != null) bundle.putString("input_url", input_url)
+        if (more != null) bundle.putString("more", more)
+        firebaseAnalytics.logEvent(eventName, bundle)
+        Log.d("Analytics", "Logged event: $eventName")
     }
 
     override fun onDestroy() {

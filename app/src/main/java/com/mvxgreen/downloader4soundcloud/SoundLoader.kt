@@ -1,7 +1,6 @@
 package com.mvxgreen.downloader4soundcloud
 
 import android.content.Context
-import android.net.Uri
 import android.os.Environment
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
@@ -12,7 +11,6 @@ import org.jaudiotagger.audio.AudioFileIO
 import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.TagOptionSingleton
 import org.jaudiotagger.tag.images.ArtworkFactory
-import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.io.File
@@ -32,6 +30,7 @@ object SoundLoader {
     lateinit var appContext: Context
 
     // --- TRACK STATE ---
+    var mLoadHtmlUrl = ""
     var mClientId = ""
     var mStreamUrl = ""
     var mM3uUrl = ""
@@ -158,6 +157,8 @@ object SoundLoader {
 
     // The Single-Track Scraper (This works, so we will reuse it in the loop!)
     suspend fun loadHtml(url: String): Boolean = withContext(Dispatchers.IO) {
+        mLoadHtmlUrl = url
+
         // Log.d(TAG, "loadHtml() called for URL: $url") // Commented out to reduce spam in loops
         try {
             val doc = Jsoup.connect(url).userAgent("Mozilla/5.0").get()
