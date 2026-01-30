@@ -29,6 +29,10 @@ import android.provider.MediaStore
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.google.firebase.analytics.FirebaseAnalytics // Added for Analytics
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.supervisorScope
+import java.util.Collections
 
 object SoundLoader {
     private const val TAG = "SoundLoader"
@@ -216,6 +220,18 @@ object SoundLoader {
         return@withContext false
     }
 
+    fun printLargeString(tag: String, message: String) {
+        val maxLogSize = 1000 // A safe chunk size
+        for (i in 0..message.length / maxLogSize) {
+            val start = i * maxLogSize
+            var end = (i + 1) * maxLogSize
+            if (end > message.length) {
+                end = message.length
+            }
+            Log.v(tag, message.substring(start, end))
+        }
+    }
+
     suspend fun loadHtml(url: String): Boolean = withContext(Dispatchers.IO) {
         mLoadHtmlUrl = url // Ensure this is set for context
 
@@ -242,6 +258,8 @@ object SoundLoader {
                 return@withContext true
             }
 
+            printLargeString("loadHtml", html)
+
             val regex = Pattern.compile("\\{\"url\":\"(https?:\\\\?/\\\\?/api-v2\\.soundcloud\\.com\\\\?/media\\\\?/soundcloud:tracks:[^\"]+)\",[^}]*\"mime_type\":\"audio\\\\?/mpeg\"")
             val matcher = regex.matcher(html)
             if (matcher.find()) {
@@ -249,12 +267,22 @@ object SoundLoader {
                 return@withContext mStreamUrl.isNotEmpty()
             }
 
-            if (html.contains(FLAG_BEGIN_STREAM_ID) && html.contains(FLAG_END_STREAM_ID)) {
-                val start = html.lastIndexOf(FLAG_BEGIN_STREAM_ID) + FLAG_BEGIN_STREAM_ID.length
-                val end = html.indexOf(FLAG_END_STREAM_ID, start)
-                if (start > 0 && end > start) {
-                    mStreamUrl = STREAM_URL_BASE + html.substring(start, end) + STREAM_URL_END
-                    return@withContext true
+            if (html.contains(FLAG_BEGIN_STREAM_ID)) {
+                // trim to middle of first instance of transcodings url (aac_160k)...
+                val trim = html.substring(html.indexOf(FLAG_BEGIN_STREAM_ID)+1)
+                if (trim.contains(FLAG_BEGIN_STREAM_ID)) {
+                    // trim to middle of second instance... (mpegurl)
+                    val trim = trim.substring(trim.indexOf(FLAG_BEGIN_STREAM_ID) + 1)
+                    if (trim.contains(FLAG_BEGIN_STREAM_ID) && trim.contains(FLAG_END_STREAM_ID)) {
+                        // ...so we can grab third instance of transcodings url (mp3_0_1)
+                        val start = trim.indexOf(FLAG_BEGIN_STREAM_ID) + FLAG_BEGIN_STREAM_ID.length
+                        val end = trim.indexOf(FLAG_END_STREAM_ID, start)
+                        if (start > 0 && end > start) {
+                            mStreamUrl =
+                                STREAM_URL_BASE + trim.substring(start, end) + STREAM_URL_END
+                            return@withContext true
+                        }
+                    }
                 }
             }
             Log.e(TAG, "loadHtml failed: No stream URL found for $url")
@@ -267,11 +295,7 @@ object SoundLoader {
         }
     }
 
-    // ... (processPlaylistWithKey, resolveM3uUrl, extractPlaylistId remain unchanged) ...
-
     suspend fun processPlaylistWithKey(clientId: String, onProgress: (Int) -> Unit = {}): Boolean = withContext(Dispatchers.IO) {
-        // ... (Existing implementation of processPlaylistWithKey) ...
-        // Re-pasting brevity check: The original file content for this method is preserved.
         Log.d(TAG, "processPlaylistWithKey called. ClientID: $clientId")
 
         if (pendingPlaylistId.isEmpty()) return@withContext false
@@ -283,37 +307,60 @@ object SoundLoader {
         val jsonStr = loadNetworkResponse(url)
         if (jsonStr.isEmpty()) return@withContext false
 
+        // Thread-safe lists to hold results from parallel threads
+        val synchronizedM3us = Collections.synchronizedList(mutableListOf<String>())
+        val synchronizedTags = Collections.synchronizedList(mutableListOf<Map<String, String>>())
+
         try {
             val jsonObj = JSONObject(jsonStr)
             val tracks = jsonObj.optJSONArray("tracks")
 
             if (tracks != null && tracks.length() > 0) {
-                Log.d(TAG, "Found ${tracks.length()} tracks. Starting processing...")
+                // 1. Collect all Track IDs first
+                val trackIds = mutableListOf<Long>()
                 for (i in 0 until tracks.length()) {
-                    val trackObj = tracks.getJSONObject(i)
-                    var permalink = trackObj.optString("permalink_url")
-                    val id = trackObj.optLong("id", -1L)
-                    if (permalink.isEmpty() && id != -1L) {
-                        val metaUrl = "https://api-v2.soundcloud.com/tracks/$id?client_id=$mClientId"
-                        val metaJson = loadNetworkResponse(metaUrl)
-                        if (metaJson.isNotEmpty()) {
-                            val fullTrackObj = JSONObject(metaJson)
-                            permalink = fullTrackObj.optString("permalink_url")
-                        }
-                    }
-                    if (permalink.isNotEmpty()) {
-                        mStreamUrl = ""
-                        val success = loadHtml(permalink)
-                        if (success && mStreamUrl.isNotEmpty()) {
-                            val m3u = resolveM3uUrl(mStreamUrl)
-                            if (m3u.isNotEmpty()) {
-                                playlistM3uUrls.add(m3u)
-                                playlistTags.add(mapOf("title" to mTitle, "artist" to mArtist, "artwork_url" to mThumbnailUrl))
-                                onProgress(playlistM3uUrls.size)
+                    val t = tracks.getJSONObject(i)
+                    val id = t.optLong("id", -1L)
+                    if (id != -1L) trackIds.add(id)
+                }
+
+                Log.d(TAG, "Found ${trackIds.size} tracks. Starting parallel fetch...")
+
+                // 2. Process in Batches (Chunked)
+                // We do 5 tracks at a time to speed it up without hitting Rate Limits (429)
+                val batchSize = 5
+                val chunks = trackIds.chunked(batchSize)
+
+                for (chunk in chunks) {
+                    supervisorScope {
+                        // Launch 5 network requests in parallel
+                        val tasks = chunk.map { id ->
+                            async {
+                                fetchTrackMetadata(id)
                             }
                         }
-                        kotlinx.coroutines.delay(150)
+
+                        // Wait for all 5 to finish
+                        val results = tasks.awaitAll()
+
+                        // Add valid results to our lists
+                        results.forEach { result ->
+                            if (result != null) {
+                                synchronizedM3us.add(result.first)
+                                synchronizedTags.add(result.second)
+                            }
+                        }
                     }
+
+                    // Update main lists and UI
+                    playlistM3uUrls.addAll(synchronizedM3us)
+                    playlistTags.addAll(synchronizedTags)
+
+                    // Clear temp buffers so we don't duplicate
+                    synchronizedM3us.clear()
+                    synchronizedTags.clear()
+
+                    onProgress(playlistM3uUrls.size)
                 }
             }
         } catch (e: Exception) {
@@ -321,6 +368,54 @@ object SoundLoader {
         }
         batchTotal = playlistM3uUrls.size
         return@withContext batchTotal > 0
+    }
+
+    // --- NEW HELPER FUNCTION ---
+    // Fetches lightweight JSON directly using ID. No HTML scraping.
+    private suspend fun fetchTrackMetadata(trackId: Long): Pair<String, Map<String, String>>? {
+        try {
+            val apiUrl = "https://api-v2.soundcloud.com/tracks/$trackId?client_id=$mClientId"
+            val jsonStr = loadNetworkResponse(apiUrl)
+            if (jsonStr.isEmpty()) return null
+
+            val json = JSONObject(jsonStr)
+
+            // 1. Get Metadata
+            val title = json.optString("title", "Unknown Track")
+            val user = json.optJSONObject("user")
+            val artist = user?.optString("username", "Unknown Artist") ?: "Unknown"
+            var artwork = json.optString("artwork_url", "")
+            if (artwork.isEmpty()) artwork = user?.optString("avatar_url", "") ?: ""
+            artwork = artwork.replace("-large.", "-t500x500.")
+
+            // 2. Find Transcoding URL
+            val media = json.optJSONObject("media")
+            val transcodings = media?.optJSONArray("transcodings")
+            var streamUrl = ""
+
+            if (transcodings != null) {
+                for (i in 0 until transcodings.length()) {
+                    val t = transcodings.getJSONObject(i)
+                    val format = t.optJSONObject("format")
+                    if (format?.optString("protocol") == "hls" &&
+                        format.optString("mime_type") == "audio/mpeg") {
+                        streamUrl = t.optString("url")
+                        break
+                    }
+                }
+            }
+
+            // 3. Resolve M3U
+            if (streamUrl.isNotEmpty()) {
+                val m3u = resolveM3uUrl(streamUrl)
+                if (m3u.isNotEmpty()) {
+                    return Pair(m3u, mapOf("title" to title, "artist" to artist, "artwork_url" to artwork))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch track $trackId: ${e.message}")
+        }
+        return null
     }
 
     private fun resolveM3uUrl(streamBaseUrl: String): String {

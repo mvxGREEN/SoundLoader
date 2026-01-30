@@ -88,11 +88,6 @@ class MainActivity : AppCompatActivity() {
             val current = intent?.getIntExtra("current", 0) ?: 0
             val total = intent?.getIntExtra("total", 0) ?: 100
 
-            if (SoundLoader.isPlaylist && SoundLoader.batchTotal > 0) {
-                // add track # to progress text
-                text += " (${current}/${SoundLoader.batchTotal})"
-            }
-
             // Update TextView
             // Note: We need to bind this view if not in binding (it is in binding now due to XML change)
             // Since we added ID dl_progress_text to XML, binding.dlProgressText is available
@@ -110,7 +105,7 @@ class MainActivity : AppCompatActivity() {
     private val finishReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             updateUI(UIState.FINISHED)
-            Toast.makeText(context, "Saved to Music!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Saved!", Toast.LENGTH_SHORT).show()
             if (SoundLoader.isShared) {
                 SoundLoader.isShared = false
                 Handler(Looper.getMainLooper()).postDelayed({ finish() }, 700)
@@ -202,7 +197,7 @@ class MainActivity : AppCompatActivity() {
                 handleInput(text)
             }
         }
-        binding.dlBtn.setOnClickListener { startDownloadService() }
+        binding.dlBtn.setOnClickListener { startDownload() }
     }
 
     private fun startBackgroundPermissionChain() {
@@ -475,11 +470,6 @@ class MainActivity : AppCompatActivity() {
                 return super.shouldInterceptRequest(view, request)
             }
         }
-    }
-
-    private fun startDownloadService() {
-        updateUI(UIState.DOWNLOADING)
-        startDownload()
     }
 
     private fun updateUI(state: UIState) {
