@@ -243,6 +243,9 @@ class MainActivity : AppCompatActivity() {
     private fun handleInput(rawInput: String) {
         inputHandler.removeCallbacksAndMessages(null)
         fetchJob?.cancel()
+        binding.previewWebview.stopLoading()
+        // Optional: clear it to be safe, though stopLoading is usually enough
+        binding.previewWebview.loadUrl("about:blank")
         SoundLoader.resetVars()
 
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
@@ -272,6 +275,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun processStandardUrl(url: String) {
+        Log.d("MainActivity", "processStandardUrl: url=$url")
+
         if (url.contains("/sets/") || url.contains("/albums/")) {
             SoundLoader.isPlaylist = true
 
@@ -292,9 +297,12 @@ class MainActivity : AppCompatActivity() {
             SoundLoader.isPlaylist = false
             loadMediaData(url)
         }
+        Log.d("MainActivity", "isPlaylist=$SoundLoader.isPlaylist")
     }
 
     private fun loadMediaData(url: String) {
+        Log.d("MainActivity", "loadMediaData: url=$url")
+
         SoundLoader.mStreamUrl = ""
 
         CoroutineScope(Dispatchers.Main).launch {
@@ -304,8 +312,10 @@ class MainActivity : AppCompatActivity() {
                     Glide.with(this@MainActivity).load(SoundLoader.mThumbnailUrl).centerCrop().into(binding.previewImg)
                 }
 
-                if (SoundLoader.mPlayerUrl.isNotEmpty() && SoundLoader.mClientId.isEmpty()) {
-                    binding.previewWebview.loadUrl(SoundLoader.mPlayerUrl)
+                // This ensures we ALWAYS get a Client ID, even if the "twitter:player" tag is missing.
+                if (SoundLoader.mClientId.isEmpty()) {
+                    val targetUrl = if (SoundLoader.mPlayerUrl.isNotEmpty()) SoundLoader.mPlayerUrl else url
+                    binding.previewWebview.loadUrl(targetUrl)
                 }
 
                 if (SoundLoader.isPlaylist) {
@@ -411,6 +421,8 @@ class MainActivity : AppCompatActivity() {
 
                     CoroutineScope(Dispatchers.Main).launch {
                         if (SoundLoader.isPlaylist) {
+                            Log.d("MainActivity", "sl_playlist_fetch_start")
+
                             val success = SoundLoader.processPlaylistWithKey(id) { count ->
                                 runOnUiThread {
                                     if (!isDestroyed && !isFinishing) {
@@ -447,7 +459,16 @@ class MainActivity : AppCompatActivity() {
                             val fullUrl = "${SoundLoader.mStreamUrl}?client_id=$id"
                             Log.d("MainActivity", "fullUrl: $fullUrl")
                             SoundLoader.loadJson(fullUrl)
-                            //if (SoundLoader.isShared) startDownload()
+                            runOnUiThread { updateUI(UIState.PREVIEW) }
+                        } else {
+                            // We have the Key, but no metadata (likely came from a Shortened URL).
+                            // Grab the fully resolved URL from the WebView and process it now.
+                            val currentUrl = view?.url
+                            if (!currentUrl.isNullOrEmpty() && currentUrl.contains("soundcloud.com")) {
+                                Log.d("MainActivity", "Shortened URL resolved to: $currentUrl")
+                                // Trigger the standard parsing logic now that we have the full URL
+                                processStandardUrl(currentUrl)
+                            }
                         }
                     }
                 }
@@ -486,6 +507,7 @@ class MainActivity : AppCompatActivity() {
             UIState.LOADING -> {
                 Log.d("MainActivity", "sl_ui_loading")
                 logEvent("sl_ui_loading", url, "")
+                binding.progressLabel.text = getString(R.string.loading)
                 binding.loadingLayout.alpha = 1.0f
                 binding.loadingLayout.visibility = View.VISIBLE
                 binding.previewCard.visibility = View.INVISIBLE

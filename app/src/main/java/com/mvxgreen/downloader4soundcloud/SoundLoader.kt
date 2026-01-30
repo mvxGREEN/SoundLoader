@@ -99,6 +99,7 @@ object SoundLoader {
 
     fun resetVars() {
         Log.d(TAG, "resetVars() called. Full Reset.")
+        mClientId = ""
         isCancelled = false
         mStreamUrl = ""
         mM3uUrl = ""
