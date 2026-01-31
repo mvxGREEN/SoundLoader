@@ -73,7 +73,8 @@ class MainActivity : AppCompatActivity() {
         override fun afterTextChanged(s: Editable?) {
             binding.btnClear.visibility = if (s.isNullOrEmpty()) View.INVISIBLE else View.VISIBLE
             inputHandler.removeCallbacks(inputRunnable)
-            if (s.isNullOrEmpty()) updateUI(UIState.EMPTY) else inputHandler.postDelayed(inputRunnable, 1000)
+            if (s.isNullOrEmpty()) updateUI(UIState.EMPTY)
+            else inputHandler.postDelayed(inputRunnable, 100)
         }
         override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
         override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -236,11 +237,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleInput(rawInput: String) {
+        if (SoundLoader.isBatchActive || binding.downloaderCard.visibility == View.VISIBLE) {
+            Toast.makeText(this, "Please wait for the current download to finish", Toast.LENGTH_LONG).show()
+            // TODO log event
+            return
+        }
+
         inputHandler.removeCallbacksAndMessages(null)
         fetchJob?.cancel()
+
         binding.previewWebview.stopLoading()
-        // Optional: clear it to be safe, though stopLoading is usually enough
+
+        // 2. Clear the View state
         binding.previewWebview.loadUrl("about:blank")
+        binding.previewWebview.clearCache(true)
+        binding.previewWebview.clearHistory()
+
+        // 3. Clear System Web Storage (Cookies & DOM)
+        // This ensures SoundCloud sees us as a fresh "Guest" every time
+        android.webkit.CookieManager.getInstance().removeAllCookies(null)
+        android.webkit.WebStorage.getInstance().deleteAllData()
+
         SoundLoader.resetVars()
 
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
@@ -479,8 +496,8 @@ class MainActivity : AppCompatActivity() {
 
         // get input_url for analytics event
         var url = binding.etMainInput.text.toString()
-        if (url.contains("http")) {
-            url = url.substringAfter("http")
+        if (url.contains("https://")) {
+            url = url.substringAfter("https://"+8)
         }
 
         when (state) {

@@ -69,13 +69,26 @@ class DownloadReceiver : BroadcastReceiver() {
                             context.sendBroadcast(processingIntent)
 
                             finishTrack(context)
-                        } else if (failures) {
-                            Log.e(TAG, "Failed to download some chunks.")
-                            // 7. Log chunk download failure
-                            // Uses SoundLoader.mM3uUrl as target, since specific chunk URL is less helpful than the source M3U
-                            SoundLoader.logErrorEvent("sl_chunk_download_fail", "Failed to download ${urls.size} chunks", SoundLoader.mM3uUrl)
                         } else {
-                            Log.d(TAG, "Download Cancelled by User. Stopping loop.")
+                            // --- FIX START ---
+                            Log.e(TAG, "Critical Failure. Stopping Service.")
+                            SoundLoader.cancelNotification(context)
+
+                            // Stop the service so the WakeLock is released
+                            val stopIntent = Intent(context, DownloadService::class.java)
+                            context.stopService(stopIntent)
+
+                            // Update UI to show failure
+                            val failIntent = Intent("DOWNLOAD_FINISHED") // Or a new ACTION_DOWNLOAD_FAILED
+                            failIntent.setPackage(context.packageName)
+                            context.sendBroadcast(failIntent)
+                            // --- FIX END ---
+
+                            // TODO log failure or cancel event
+                            if (failures) {
+                                Log.e(TAG, "Download failed. Stopping loop.")
+                            }
+
                         }
                     }
                 }

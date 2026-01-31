@@ -200,8 +200,8 @@ object SoundLoader {
             val url = URL(urlStr)
             val file = File(destPath)
             val conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 15000
-            conn.readTimeout = 15000
+            conn.connectTimeout = 60000
+            conn.readTimeout = 60000
             conn.connect()
 
             if (conn.responseCode in 200..299) {
@@ -215,28 +215,18 @@ object SoundLoader {
         } catch (e: Exception) {
             Log.e("SoundLoader", "Download failed: ${e.message}")
             // 1. Log download exception
-            logErrorEvent("sl_file_download_exception", e.message ?: "Unknown Error", urlStr)
+            //logErrorEvent("sl_file_download_exception", e.message ?: "Unknown Error", urlStr)
         }
         return@withContext false
-    }
-
-    fun printLargeString(tag: String, message: String) {
-        val maxLogSize = 1000 // A safe chunk size
-        for (i in 0..message.length / maxLogSize) {
-            val start = i * maxLogSize
-            var end = (i + 1) * maxLogSize
-            if (end > message.length) {
-                end = message.length
-            }
-            Log.v(tag, message.substring(start, end))
-        }
     }
 
     suspend fun loadHtml(url: String): Boolean = withContext(Dispatchers.IO) {
         mLoadHtmlUrl = url // Ensure this is set for context
 
         try {
-            val doc = Jsoup.connect(url).userAgent("Mozilla/5.0").get()
+            val doc = Jsoup.connect(url).userAgent("Mozilla/5.0")
+                .timeout(5000)
+                .get()
             val html = doc.html()
 
             val titleText = doc.title().replace("Stream ", "").replace(" | Listen online for free on SoundCloud", "")
@@ -258,7 +248,7 @@ object SoundLoader {
                 return@withContext true
             }
 
-            printLargeString("loadHtml", html)
+            //printLargeString("loadHtml", html)
 
             val regex = Pattern.compile("\\{\"url\":\"(https?:\\\\?/\\\\?/api-v2\\.soundcloud\\.com\\\\?/media\\\\?/soundcloud:tracks:[^\"]+)\",[^}]*\"mime_type\":\"audio\\\\?/mpeg\"")
             val matcher = regex.matcher(html)
@@ -522,8 +512,9 @@ object SoundLoader {
         val sourceFile = File(privatePath)
         if (!sourceFile.exists()) return@withContext ""
 
-        var safeName = mTitle.replace("[^a-zA-Z0-9 .\\-_]".toRegex(), "_")
+        var safeName = mTitle.replace("[\\\\/:*?\"<>|]".toRegex(), "_")
             .trim { it.isWhitespace() || it == '.' }
+        // --- FIX END ---
 
         if (safeName.length > 100) {
             safeName = safeName.substring(0, 100).trim()
