@@ -237,7 +237,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleInput(rawInput: String) {
-        if (SoundLoader.isBatchActive || binding.downloaderCard.visibility == View.VISIBLE) {
+        // TODO implement for indivodual downloads
+        if (SoundLoader.isBatchActive) {
             Toast.makeText(this, "Please wait for the current download to finish", Toast.LENGTH_LONG).show()
             // TODO log event
             return
@@ -605,7 +606,7 @@ class MainActivity : AppCompatActivity() {
         val adRequest = AdRequest.Builder().build()
         InterstitialAd.load(this, interstitialId, adRequest, object : InterstitialAdLoadCallback() {
             override fun onAdFailedToLoad(adError: LoadAdError) {
-                logEvent("sl_interstitial_fail", "", "")
+                logEvent("sl_interstitial_fail", "", "Code: ${adError.code} | Message: ${adError.message}")
                 mInterstitialAd = null
                 isAdLoading = false
             }

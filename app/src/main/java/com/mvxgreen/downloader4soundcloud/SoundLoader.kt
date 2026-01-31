@@ -403,6 +403,7 @@ object SoundLoader {
                 }
             }
         } catch (e: Exception) {
+            logErrorEvent("sl_fetch_track_meta_exception", e.message ?: "Unknown Error", "$trackId")
             Log.e(TAG, "Failed to fetch track $trackId: ${e.message}")
         }
         return null
