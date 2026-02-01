@@ -35,7 +35,6 @@ import com.mvxgreen.downloader4soundcloud.databinding.DialogUpgradeBinding
 import kotlinx.coroutines.*
 import java.util.regex.Pattern
 import kotlin.toString
-import com.mvxgreen.downloader4soundcloud.BuildConfig
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -48,8 +47,8 @@ class MainActivity : AppCompatActivity() {
     private val bannerIdReal = "ca-app-pub-7417392682402637/2881991548"
 
     // Switch variables (currently using Test IDs)
-    private val interstitialId = if (BuildConfig.DEBUG) interstitialIdTest else interstitialIdReal
-    private val bannerId = if (BuildConfig.DEBUG) bannerIdTest else bannerIdReal
+    private val interstitialId = interstitialIdReal
+    private val bannerId = bannerIdReal
 
     private var mInterstitialAd: InterstitialAd? = null
     private var isAdLoading = false
@@ -237,7 +236,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleInput(rawInput: String) {
-        // TODO implement for indivodual downloads
         if (SoundLoader.isBatchActive) {
             Toast.makeText(this, "Please wait for the current download to finish", Toast.LENGTH_LONG).show()
             // TODO log event
@@ -702,7 +700,12 @@ class MainActivity : AppCompatActivity() {
     private fun handlePurchase(purchase: Purchase) {
         if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED && !purchase.isAcknowledged) {
             billingClient.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build()) {
-                if (it.responseCode == BillingClient.BillingResponseCode.OK) runOnUiThread { Toast.makeText(this, "Thanks for your support <3", Toast.LENGTH_SHORT).show(); saveGoldStatus(true); updateUpgradeIcon(true); recreate() }
+                if (it.responseCode == BillingClient.BillingResponseCode.OK) runOnUiThread {
+                    Toast.makeText(this, "Thanks for your support <3", Toast.LENGTH_SHORT).show()
+                    saveGoldStatus(true)
+                    updateUpgradeIcon(true)
+                    binding.adView.visibility = View.GONE
+                    recreate() }
             }
         } else if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) saveGoldStatus(true)
     }

@@ -263,7 +263,7 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="10dp"
         ads:adSize="BANNER"
-        ads:adUnitId="TEST ID: ca-app-pub-3940256099942544/6300978111"
+        ads:adUnitId="ca-app-pub-3940256099942544/6300978111"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
