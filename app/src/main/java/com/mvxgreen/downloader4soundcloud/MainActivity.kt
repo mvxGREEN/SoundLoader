@@ -47,8 +47,8 @@ class MainActivity : AppCompatActivity() {
     private val bannerIdReal = "ca-app-pub-7417392682402637/2881991548"
 
     // Switch variables (currently using Test IDs)
-    private val interstitialId = interstitialIdReal
-    private val bannerId = bannerIdReal
+    private val interstitialId = interstitialIdTest
+    private val bannerId = bannerIdTest
 
     private var mInterstitialAd: InterstitialAd? = null
     private var isAdLoading = false
@@ -415,7 +415,7 @@ class MainActivity : AppCompatActivity() {
         val settings = binding.previewWebview.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
-        settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
+        settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
 
         binding.previewWebview.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {

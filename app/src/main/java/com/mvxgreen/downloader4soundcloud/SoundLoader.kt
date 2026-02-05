@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay // Import added
 import org.jaudiotagger.audio.AudioFileIO
 import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.TagOptionSingleton
@@ -24,11 +25,11 @@ import android.content.ContentValues
 import android.content.Intent
 import android.media.MediaScannerConnection
 import android.os.Build
-import android.os.Bundle // Added for Analytics
+import android.os.Bundle
 import android.provider.MediaStore
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.google.firebase.analytics.FirebaseAnalytics // Added for Analytics
+import com.google.firebase.analytics.FirebaseAnalytics
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.supervisorScope
@@ -42,7 +43,7 @@ object SoundLoader {
     @Volatile var isCancelled = false
 
     // --- TRACK STATE ---
-    var mLoadHtmlUrl = "" // This holds the original User Input URL
+    var mLoadHtmlUrl = ""
     var mClientId = ""
     var mStreamUrl = ""
     var mM3uUrl = ""
@@ -53,7 +54,6 @@ object SoundLoader {
     var mPlayerUrl = ""
     var mMp3Urls = mutableListOf<String>()
 
-    // ... (Existing variable declarations remain exactly the same) ...
     var playlistDownloadId: Long = -1L
     var thumbnailDownloadId: Long = -1L
     var isShared = false
@@ -77,11 +77,9 @@ object SoundLoader {
     fun logErrorEvent(eventName: String, errorMessage: String, targetUrl: String = "") {
         try {
             val bundle = Bundle()
-            // Always log the original User Input URL if available
             if (mLoadHtmlUrl.isNotEmpty()) {
                 bundle.putString("input_url", mLoadHtmlUrl)
             }
-            // Log the specific URL that failed (e.g., the raw stream URL or JSON API URL)
             if (targetUrl.isNotEmpty()) {
                 bundle.putString("target_url", targetUrl)
             }
@@ -196,6 +194,7 @@ object SoundLoader {
     }
 
     suspend fun downloadFile(urlStr: String, destPath: String): Boolean = withContext(Dispatchers.IO) {
+        delay(34) // Added network delay
         try {
             val url = URL(urlStr)
             val file = File(destPath)
@@ -214,17 +213,17 @@ object SoundLoader {
             }
         } catch (e: Exception) {
             Log.e("SoundLoader", "Download failed: ${e.message}")
-            // 1. Log download exception
-            //logErrorEvent("sl_file_download_exception", e.message ?: "Unknown Error", urlStr)
+            // logErrorEvent("sl_file_download_exception", e.message ?: "Unknown Error", urlStr)
         }
         return@withContext false
     }
 
     suspend fun loadHtml(url: String): Boolean = withContext(Dispatchers.IO) {
-        mLoadHtmlUrl = url // Ensure this is set for context
+        delay(34) // Added network delay
+        mLoadHtmlUrl = url
 
         try {
-            val doc = Jsoup.connect(url).userAgent("Mozilla/5.0")
+            val doc = Jsoup.connect(url).userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
                 .timeout(5000)
                 .get()
             val html = doc.html()
@@ -248,8 +247,6 @@ object SoundLoader {
                 return@withContext true
             }
 
-            //printLargeString("loadHtml", html)
-
             val regex = Pattern.compile("\\{\"url\":\"(https?:\\\\?/\\\\?/api-v2\\.soundcloud\\.com\\\\?/media\\\\?/soundcloud:tracks:[^\"]+)\",[^}]*\"mime_type\":\"audio\\\\?/mpeg\"")
             val matcher = regex.matcher(html)
             if (matcher.find()) {
@@ -258,13 +255,10 @@ object SoundLoader {
             }
 
             if (html.contains(FLAG_BEGIN_STREAM_ID)) {
-                // trim to middle of first instance of transcodings url (aac_160k)...
                 val trim = html.substring(html.indexOf(FLAG_BEGIN_STREAM_ID)+1)
                 if (trim.contains(FLAG_BEGIN_STREAM_ID)) {
-                    // trim to middle of second instance... (mpegurl)
                     val trim = trim.substring(trim.indexOf(FLAG_BEGIN_STREAM_ID) + 1)
                     if (trim.contains(FLAG_BEGIN_STREAM_ID) && trim.contains(FLAG_END_STREAM_ID)) {
-                        // ...so we can grab third instance of transcodings url (mp3_0_1)
                         val start = trim.indexOf(FLAG_BEGIN_STREAM_ID) + FLAG_BEGIN_STREAM_ID.length
                         val end = trim.indexOf(FLAG_END_STREAM_ID, start)
                         if (start > 0 && end > start) {
@@ -279,8 +273,6 @@ object SoundLoader {
             return@withContext false
         } catch (e: Exception) {
             Log.e(TAG, "loadHtml Exception: ${e.message}")
-            // Note: We might want to log this too, but you didn't mark it with TODO in the original file.
-            // I'll stick to replacing your explicit TODOs to avoid over-engineering.
             return@withContext false
         }
     }
@@ -297,7 +289,6 @@ object SoundLoader {
         val jsonStr = loadNetworkResponse(url)
         if (jsonStr.isEmpty()) return@withContext false
 
-        // Thread-safe lists to hold results from parallel threads
         val synchronizedM3us = Collections.synchronizedList(mutableListOf<String>())
         val synchronizedTags = Collections.synchronizedList(mutableListOf<Map<String, String>>())
 
@@ -306,7 +297,6 @@ object SoundLoader {
             val tracks = jsonObj.optJSONArray("tracks")
 
             if (tracks != null && tracks.length() > 0) {
-                // 1. Collect all Track IDs first
                 val trackIds = mutableListOf<Long>()
                 for (i in 0 until tracks.length()) {
                     val t = tracks.getJSONObject(i)
@@ -316,24 +306,19 @@ object SoundLoader {
 
                 Log.d(TAG, "Found ${trackIds.size} tracks. Starting parallel fetch...")
 
-                // 2. Process in Batches (Chunked)
-                // We do 5 tracks at a time to speed it up without hitting Rate Limits (429)
                 val batchSize = 5
                 val chunks = trackIds.chunked(batchSize)
 
                 for (chunk in chunks) {
                     supervisorScope {
-                        // Launch 5 network requests in parallel
                         val tasks = chunk.map { id ->
                             async {
                                 fetchTrackMetadata(id)
                             }
                         }
 
-                        // Wait for all 5 to finish
                         val results = tasks.awaitAll()
 
-                        // Add valid results to our lists
                         results.forEach { result ->
                             if (result != null) {
                                 synchronizedM3us.add(result.first)
@@ -342,11 +327,9 @@ object SoundLoader {
                         }
                     }
 
-                    // Update main lists and UI
                     playlistM3uUrls.addAll(synchronizedM3us)
                     playlistTags.addAll(synchronizedTags)
 
-                    // Clear temp buffers so we don't duplicate
                     synchronizedM3us.clear()
                     synchronizedTags.clear()
 
@@ -360,8 +343,6 @@ object SoundLoader {
         return@withContext batchTotal > 0
     }
 
-    // --- NEW HELPER FUNCTION ---
-    // Fetches lightweight JSON directly using ID. No HTML scraping.
     private suspend fun fetchTrackMetadata(trackId: Long): Pair<String, Map<String, String>>? {
         try {
             val apiUrl = "https://api-v2.soundcloud.com/tracks/$trackId?client_id=$mClientId"
@@ -370,7 +351,6 @@ object SoundLoader {
 
             val json = JSONObject(jsonStr)
 
-            // 1. Get Metadata
             val title = json.optString("title", "Unknown Track")
             val user = json.optJSONObject("user")
             val artist = user?.optString("username", "Unknown Artist") ?: "Unknown"
@@ -378,7 +358,6 @@ object SoundLoader {
             if (artwork.isEmpty()) artwork = user?.optString("avatar_url", "") ?: ""
             artwork = artwork.replace("-large.", "-t500x500.")
 
-            // 2. Find Transcoding URL
             val media = json.optJSONObject("media")
             val transcodings = media?.optJSONArray("transcodings")
             var streamUrl = ""
@@ -395,7 +374,6 @@ object SoundLoader {
                 }
             }
 
-            // 3. Resolve M3U
             if (streamUrl.isNotEmpty()) {
                 val m3u = resolveM3uUrl(streamUrl)
                 if (m3u.isNotEmpty()) {
@@ -409,10 +387,13 @@ object SoundLoader {
         return null
     }
 
-    private fun resolveM3uUrl(streamBaseUrl: String): String {
+    private suspend fun resolveM3uUrl(streamBaseUrl: String): String {
+        delay(34) // Added network delay
         try {
             val authUrl = if (streamBaseUrl.contains("client_id")) streamBaseUrl else "$streamBaseUrl?client_id=$mClientId"
-            val jsonStr = URL(authUrl).readText()
+            // Use URL().readText() inside IO context if not using loadNetworkResponse
+            // For consistency with other network calls, we can use simple readText here but wrapped in try/catch
+            val jsonStr = withContext(Dispatchers.IO) { URL(authUrl).readText() }
             return JSONObject(jsonStr).optString("url", "")
         } catch (e: Exception) {
             Log.e(TAG, "Error resolving M3U url", e)
@@ -428,6 +409,7 @@ object SoundLoader {
     }
 
     private suspend fun loadNetworkResponse(urlStr: String): String = withContext(Dispatchers.IO) {
+        delay(34) // Added network delay
         try {
             val conn = URL(urlStr).openConnection() as HttpURLConnection
             conn.connectTimeout = 5000
@@ -441,24 +423,22 @@ object SoundLoader {
             if (code == 200) {
                 return@withContext conn.inputStream.bufferedReader().use { it.readText() }
             } else {
-                // 2. Log Network Response Failure
                 logErrorEvent("sl_network_response_fail", "HTTP Code: $code", urlStr)
                 return@withContext ""
             }
         } catch (e: Exception) {
-            // 3. Log Network Exception
             logErrorEvent("sl_network_exception", e.message ?: "Unknown Error", urlStr)
             return@withContext ""
         }
     }
 
     suspend fun loadJson(urlStr: String) = withContext(Dispatchers.IO) {
+        delay(34) // Added network delay
         try {
             val json = URL(urlStr).readText()
             val jsonObj = JSONObject(json)
             if (jsonObj.has("url")) mM3uUrl = jsonObj.getString("url")
         } catch (e: Exception) {
-            // 4. Log JSON Parsing Exception
             logErrorEvent("sl_json_parse_exception", e.message ?: "Unknown Error", urlStr)
         }
     }
@@ -504,7 +484,6 @@ object SoundLoader {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error setting tags: ${e.message}")
-            // 5. Log Tagging Exception
             logErrorEvent("sl_tagging_exception", e.message ?: "Unknown Error", tempFilePath)
         }
     }
@@ -515,7 +494,6 @@ object SoundLoader {
 
         var safeName = mTitle.replace("[\\\\/:*?\"<>|]".toRegex(), "_")
             .trim { it.isWhitespace() || it == '.' }
-        // --- FIX END ---
 
         if (safeName.length > 100) {
             safeName = safeName.substring(0, 100).trim()
@@ -558,7 +536,6 @@ object SoundLoader {
             return@withContext uri.toString()
         } catch (e: Exception) {
             Log.e("SoundLoader", "Export failed: ${e.message}")
-            // 6. Log Export Exception
             logErrorEvent("sl_export_exception", e.message ?: "Unknown Error", privatePath)
             return@withContext ""
         }

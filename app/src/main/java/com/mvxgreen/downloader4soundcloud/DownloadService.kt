@@ -15,15 +15,13 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay // Import added
 
 class DownloadService : Service() {
 
     private val TAG = "DownloadService"
 
-    // 1. Create a variable for the WakeLock
     private var wakeLock: PowerManager.WakeLock? = null
-
-    // Keep the receiver instance alive
     private val downloadReceiver = DownloadReceiver()
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -31,11 +29,9 @@ class DownloadService : Service() {
     override fun onCreate() {
         super.onCreate()
 
-        // 2. Initialize the WakeLock
-        // "PARTIAL_WAKE_LOCK" keeps the CPU running but allows the screen to turn off
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SoundLoader::ServiceBatchLock")
-        wakeLock?.setReferenceCounted(false) // Ensure we don't need to release it multiple times
+        wakeLock?.setReferenceCounted(false)
 
         Log.d(TAG, "Registering DownloadReceiver in Service")
         ContextCompat.registerReceiver(
@@ -52,7 +48,6 @@ class DownloadService : Service() {
             unregisterReceiver(downloadReceiver)
         } catch (e: Exception) { }
 
-        // 3. Release the WakeLock when the service dies (Batch Finished)
         if (wakeLock?.isHeld == true) {
             wakeLock?.release()
             Log.d(TAG, "Batch Finished. WakeLock Released.")
@@ -71,9 +66,8 @@ class DownloadService : Service() {
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
             )
 
-            // 4. Acquire the lock immediately
             if (wakeLock?.isHeld == false) {
-                wakeLock?.acquire(60 * 60 * 1000L) // Safety timeout: 1 hour
+                wakeLock?.acquire(60 * 60 * 1000L)
                 Log.d(TAG, "WakeLock Acquired for Batch")
             }
 
@@ -120,7 +114,6 @@ class DownloadService : Service() {
                 startForeground(SoundLoader.NOTIFICATION_ID, notification)
             }
 
-            // UI Broadcasts
             val progressIntent = Intent("ACTION_PROGRESS_UPDATE")
             progressIntent.putExtra("text", progressText)
             progressIntent.putExtra("indeterminate", isIndeterminate)
@@ -136,22 +129,15 @@ class DownloadService : Service() {
         else if (intent?.action == "CANCEL_DOWNLOAD") {
             Log.d(TAG, "User requested cancellation")
 
-            // 1. Set the flag to stop the loops in DownloadReceiver
             SoundLoader.isCancelled = true
-
-            // 2. Clear Notification
             stopForeground(STOP_FOREGROUND_REMOVE)
-
-            // 3. Stop Service
             stopSelf()
 
-            // 4. Cleanup Temp Files (Optional but recommended)
             CoroutineScope(Dispatchers.IO).launch {
                 SoundLoader.deleteTempFiles()
             }
 
-            // 5. Update UI (Broadcast)
-            val i = Intent("DOWNLOAD_FINISHED") // Reuse your existing finish receiver to reset UI
+            val i = Intent("DOWNLOAD_FINISHED")
             i.setPackage(packageName)
             sendBroadcast(i)
         }
@@ -171,6 +157,8 @@ class DownloadService : Service() {
             val request = DownloadManager.Request(Uri.parse(SoundLoader.mM3uUrl))
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
             request.setDestinationInExternalFilesDir(this, "temp", uniqueName)
+
+            delay(34) // Added delay before enqueueing download
             SoundLoader.playlistDownloadId = downloadManager.enqueue(request)
         }
 
@@ -183,6 +171,8 @@ class DownloadService : Service() {
             val thumbReq = DownloadManager.Request(Uri.parse(SoundLoader.mThumbnailUrl))
             thumbReq.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
             thumbReq.setDestinationInExternalFilesDir(this, "temp", uniqueThumb)
+
+            delay(34) // Added delay before enqueueing download
             SoundLoader.thumbnailDownloadId = downloadManager.enqueue(thumbReq)
         }
     }
