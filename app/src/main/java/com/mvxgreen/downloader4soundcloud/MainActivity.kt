@@ -55,7 +55,8 @@ class MainActivity : AppCompatActivity() {
 
     // Switch variables (currently using Test IDs)
     private val interstitialId = interstitialIdTest
-    private val bannerId = bannerIdTest
+    // change banner id in both layout xml files
+    // private val bannerId = bannerIdReal
 
     private var mInterstitialAd: InterstitialAd? = null
     private var isAdLoading = false

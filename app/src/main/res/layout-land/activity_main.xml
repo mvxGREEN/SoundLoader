@@ -272,14 +272,6 @@
         </FrameLayout>
     </androidx.cardview.widget.CardView>
 
-    <WebView
-        android:id="@+id/preview_webview"
-        android:layout_width="1px"
-        android:layout_height="1px"
-        android:visibility="invisible"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"/>
-
     <!-- TEST ID: ca-app-pub-3940256099942544/6300978111 -->
     <!-- REAL ID: ca-app-pub-7417392682402637/2881991548 -->
     <com.google.android.gms.ads.AdView
@@ -287,10 +279,19 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="10dp"
+        android:elevation="8dp"
         ads:adSize="BANNER"
         ads:adUnitId="ca-app-pub-3940256099942544/6300978111"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toTopOf="@id/preview_card"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
+
+    <WebView
+        android:id="@+id/preview_webview"
+        android:layout_width="1px"
+        android:layout_height="1px"
+        android:visibility="invisible"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
