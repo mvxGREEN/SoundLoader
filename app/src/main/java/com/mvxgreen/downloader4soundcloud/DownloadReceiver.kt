@@ -4,8 +4,12 @@ import android.app.DownloadManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.util.Log
+import com.google.firebase.analytics.FirebaseAnalytics
+import com.mvxgreen.downloader4soundcloud.SoundLoader.appContext
 import com.mvxgreen.downloader4soundcloud.SoundLoader.isCancelled
+import com.mvxgreen.downloader4soundcloud.SoundLoader.mLoadHtmlUrl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -18,78 +22,93 @@ class DownloadReceiver : BroadcastReceiver() {
         if (intent.action == DownloadManager.ACTION_DOWNLOAD_COMPLETE) {
             val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
 
-            // Only react to the M3U (Playlist) download finishing
             if (id == SoundLoader.playlistDownloadId) {
-                Log.d(TAG, "M3U Download Complete. Starting processing...")
+                // 1. Tell Android we are doing async work so it doesn't kill the process
+                val pendingResult = goAsync()
 
+                Log.d(TAG, "M3U Download Complete. Starting processing...")
                 val m3uPath = SoundLoader.absPathDocsTemp + SoundLoader.currentM3uFilename
 
-                // Launch a coroutine to do the work
                 CoroutineScope(Dispatchers.IO).launch {
-                    val urls = SoundLoader.extractMp3Urls(m3uPath)
+                    try {
+                        val urls = SoundLoader.extractMp3Urls(m3uPath)
 
-                    if (urls.isNotEmpty()) {
-                        SoundLoader.mMp3Urls = urls.toMutableList()
-                        Log.d(TAG, "M3U Parsed. Downloading ${urls.size} chunks directly...")
+                        if (urls.isNotEmpty()) {
+                            SoundLoader.mMp3Urls = urls.toMutableList()
+                            Log.d(TAG, "M3U Parsed. Downloading ${urls.size} chunks directly...")
 
-                        var failures = false
+                            var failures = false
 
-                        // --- DIRECT DOWNLOAD LOOP ---
-                        urls.forEachIndexed { i, url ->
-                            val currentChunk = i + 1
-                            val totalChunks = urls.size
-                            val percent = (currentChunk.toDouble() / totalChunks.toDouble()) * 100.0
-                            val percentStr = percent.toInt().toString()
-                            val progressText = "$percentStr%"
+                            // --- DIRECT DOWNLOAD LOOP ---
+                            urls.forEachIndexed { i, url ->
+                                val currentChunk = i + 1
+                                val totalChunks = urls.size
+                                val percent = (currentChunk.toDouble() / totalChunks.toDouble()) * 100.0
+                                val percentStr = percent.toInt().toString()
+                                val progressText = "$percentStr%"
 
-                            // 1. Update Notification
-                            SoundLoader.updateNotification(context, progressText, currentChunk, totalChunks, false)
+                                // 1. Update Notification
+                                SoundLoader.updateNotification(context, progressText, currentChunk, totalChunks, false)
 
-                            // 2. Update Progress Bar (UI)
-                            val progressIntent = Intent("ACTION_PROGRESS_UPDATE")
-                            progressIntent.putExtra("text", progressText)
-                            progressIntent.putExtra("indeterminate", false)
-                            progressIntent.putExtra("current", currentChunk)
-                            progressIntent.putExtra("total", totalChunks)
-                            progressIntent.setPackage(context.packageName)
-                            context.sendBroadcast(progressIntent)
+                                // 2. Update Progress Bar (UI)
+                                val progressIntent = Intent("ACTION_PROGRESS_UPDATE")
+                                progressIntent.putExtra("text", progressText)
+                                progressIntent.putExtra("indeterminate", false)
+                                progressIntent.putExtra("current", currentChunk)
+                                progressIntent.putExtra("total", totalChunks)
+                                progressIntent.setPackage(context.packageName)
+                                context.sendBroadcast(progressIntent)
 
-                            // 3. Perform Download
-                            val dest = "${SoundLoader.absPathDocsTemp}s$i.mp3"
-                            val success = SoundLoader.downloadFile(url, dest)
-                            if (!success) failures = true
-                        }
-
-                        if (!failures && !isCancelled) {
-                            // Optional: Update UI to show processing state before stitching
-                            val processingIntent = Intent("ACTION_PROGRESS_UPDATE")
-                            processingIntent.putExtra("text", "Processing…")
-                            processingIntent.putExtra("indeterminate", true)
-                            processingIntent.setPackage(context.packageName)
-                            context.sendBroadcast(processingIntent)
-
-                            finishTrack(context)
-                        } else {
-                            // --- FIX START ---
-                            Log.e(TAG, "Critical Failure. Stopping Service.")
-                            SoundLoader.cancelNotification(context)
-
-                            // Stop the service so the WakeLock is released
-                            val stopIntent = Intent(context, DownloadService::class.java)
-                            context.stopService(stopIntent)
-
-                            // Update UI to show failure
-                            val failIntent = Intent("DOWNLOAD_FINISHED") // Or a new ACTION_DOWNLOAD_FAILED
-                            failIntent.setPackage(context.packageName)
-                            context.sendBroadcast(failIntent)
-                            // --- FIX END ---
-
-                            // TODO log failure or cancel event
-                            if (failures) {
-                                Log.e(TAG, "Download failed. Stopping loop.")
+                                // 3. Perform Download
+                                val dest = "${SoundLoader.absPathDocsTemp}s$i.mp3"
+                                val success = SoundLoader.downloadFile(url, dest)
+                                if (!success) failures = true
                             }
 
+                            if (!failures && !isCancelled) {
+                                // Optional: Update UI to show processing state before stitching
+                                val processingIntent = Intent("ACTION_PROGRESS_UPDATE")
+                                processingIntent.putExtra("text", "Processing…")
+                                processingIntent.putExtra("indeterminate", true)
+                                processingIntent.setPackage(context.packageName)
+                                context.sendBroadcast(processingIntent)
+
+                                finishTrack(context)
+                            } else {
+                                Log.e(TAG, "Critical Failure. Stopping Service.")
+                                SoundLoader.cancelNotification(context)
+
+                                // Stop the service so the WakeLock is released
+                                val stopIntent = Intent(context, DownloadService::class.java)
+                                context.stopService(stopIntent)
+
+                                // Update UI to show failure
+                                val failIntent = Intent("DOWNLOAD_FINISHED") // Or a new ACTION_DOWNLOAD_FAILED
+                                failIntent.putExtra("DOWNLOADED_URI", "")
+                                failIntent.setPackage(context.packageName)
+                                context.sendBroadcast(failIntent)
+
+                                // log failure
+                                if (failures) {
+                                    try {
+                                        val bundle = Bundle()
+                                        if (mLoadHtmlUrl.isNotEmpty()) {
+                                            bundle.putString("input_url", mLoadHtmlUrl)
+                                        }
+                                        bundle.putString("error_message", "download failures")
+
+                                        FirebaseAnalytics.getInstance(appContext).logEvent("sl_download_failure", bundle)
+                                        Log.d("DownloadReceiver", "Logged Analytics Event: sl_download_failure")
+                                    } catch (e: Exception) {
+                                        Log.e("DownloadReceiver", "Failed to log analytics: ${e.message}")
+                                    }
+                                }
+
+                            }
                         }
+                    } finally {
+                        // 2. Tell Android we are fully done, it can clean up if needed
+                        pendingResult.finish()
                     }
                 }
             }
@@ -98,6 +117,7 @@ class DownloadReceiver : BroadcastReceiver() {
 
     private fun finishTrack(context: Context) {
         val appContext = context.applicationContext
+        var savedUriStr = ""
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -108,7 +128,7 @@ class DownloadReceiver : BroadcastReceiver() {
                 SoundLoader.setTags(tempPath)
 
                 // 3. Save
-                SoundLoader.moveFileToMusic(tempPath)
+                savedUriStr = SoundLoader.moveFileToMusic(tempPath)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Finish failed: ${e.message}")
@@ -148,6 +168,7 @@ class DownloadReceiver : BroadcastReceiver() {
                 appContext.stopService(stopIntent)
 
                 val i = Intent("DOWNLOAD_FINISHED")
+                i.putExtra("DOWNLOADED_URI", savedUriStr)
                 i.setPackage(appContext.packageName)
                 appContext.sendBroadcast(i)
             }

@@ -15,11 +15,14 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay // Import added
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 
 class DownloadService : Service() {
-
     private val TAG = "DownloadService"
+
+    private val serviceJob = Job()
+    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
 
     private var wakeLock: PowerManager.WakeLock? = null
     private val downloadReceiver = DownloadReceiver()
@@ -44,6 +47,9 @@ class DownloadService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+
+        serviceJob.cancel()
+
         try {
             unregisterReceiver(downloadReceiver)
         } catch (e: Exception) { }
@@ -122,7 +128,7 @@ class DownloadService : Service() {
             progressIntent.setPackage(packageName)
             sendBroadcast(progressIntent)
 
-            CoroutineScope(Dispatchers.IO).launch {
+            serviceScope.launch {
                 startDownload()
             }
         }
@@ -138,6 +144,7 @@ class DownloadService : Service() {
             }
 
             val i = Intent("DOWNLOAD_FINISHED")
+            i.putExtra("DOWNLOADED_URI", "")
             i.setPackage(packageName)
             sendBroadcast(i)
         }

@@ -35,10 +35,15 @@ import com.mvxgreen.downloader4soundcloud.databinding.DialogUpgradeBinding
 import kotlinx.coroutines.*
 import java.util.regex.Pattern
 import kotlin.toString
+import androidx.lifecycle.lifecycleScope
+import com.google.android.play.core.review.ReviewManagerFactory
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var firebaseAnalytics: FirebaseAnalytics
+
+    private val PREFS_NAME = "SoundLoaderPrefs"
+    private val KEY_APP_OPEN_COUNT = "AppOpenCount"
 
     // AdMob IDs (Test IDs provided by default)
     private val interstitialIdTest = "ca-app-pub-3940256099942544/1033173712"
@@ -56,6 +61,8 @@ class MainActivity : AppCompatActivity() {
     private var fetchJob: Job? = null
     private val VALID_INPUT_REGEX = Pattern.compile("^$|((?:on\\.|m\\.|www\\.)?soundcloud\\.com\\/)", Pattern.CASE_INSENSITIVE)
     private val EXTRACT_URL_REGEX = Pattern.compile("(https?://(?:on\\.|www\\.|m\\.)?soundcloud\\.com/[^\\s]*)", Pattern.CASE_INSENSITIVE)
+
+    private var downloadedFileUri: Uri? = null
 
     private lateinit var requestNotificationLauncher: androidx.activity.result.ActivityResultLauncher<String>
     private lateinit var billingClient: BillingClient
@@ -104,6 +111,12 @@ class MainActivity : AppCompatActivity() {
     //private val downloadReceiver = DownloadReceiver()
     private val finishReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            // Grab the URI passed from the Service/Receiver
+            val uriString = intent?.getStringExtra("DOWNLOADED_URI")
+            if (!uriString.isNullOrEmpty()) {
+                downloadedFileUri = Uri.parse(uriString)
+            }
+
             updateUI(UIState.FINISHED)
             Toast.makeText(context, "Saved!", Toast.LENGTH_SHORT).show()
             if (SoundLoader.isShared) {
@@ -150,6 +163,8 @@ class MainActivity : AppCompatActivity() {
 
         updateUI(UIState.EMPTY)
         checkIntent(intent)
+
+        checkAndShowInAppReview()
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -197,7 +212,12 @@ class MainActivity : AppCompatActivity() {
                 handleInput(text)
             }
         }
+
         binding.dlBtn.setOnClickListener { startDownload() }
+
+        binding.shareBtn.setOnClickListener {
+            shareDownloadedFile()
+        }
     }
 
     private fun startBackgroundPermissionChain() {
@@ -231,6 +251,39 @@ class MainActivity : AppCompatActivity() {
                 R.id.action_about -> { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://mobileapps.green/"))); true }
                 R.id.action_enable_background -> { startBackgroundPermissionChain(); true }
                 else -> false
+            }
+        }
+    }
+
+    private fun checkAndShowInAppReview() {
+        val sharedPrefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val currentCount = sharedPrefs.getInt(KEY_APP_OPEN_COUNT, 0) + 1
+
+        // Save the new count immediately
+        sharedPrefs.edit().putInt(KEY_APP_OPEN_COUNT, currentCount).apply()
+
+        Log.d("MainActivity", "App Open Count: $currentCount")
+
+        // Trigger only on the 3rd open
+        if (currentCount == 3) {
+            val manager = ReviewManagerFactory.create(this)
+            val request = manager.requestReviewFlow()
+
+            request.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    // We got the ReviewInfo object
+                    val reviewInfo = task.result
+                    val flow = manager.launchReviewFlow(this, reviewInfo)
+                    flow.addOnCompleteListener { _ ->
+                        // The flow has finished. The API does not indicate whether the user
+                        // reviewed or not, or even if the review dialog was shown.
+                        // Thus, no matter the result, we continue our app flow.
+                        Log.d("MainActivity", "In-App Review flow completed")
+                    }
+                } else {
+                    // There was some problem, log or handle the error code.
+                    Log.e("MainActivity", "Review info request failed", task.exception)
+                }
             }
         }
     }
@@ -316,7 +369,7 @@ class MainActivity : AppCompatActivity() {
 
         SoundLoader.mStreamUrl = ""
 
-        CoroutineScope(Dispatchers.Main).launch {
+        lifecycleScope.launch {
             val success = SoundLoader.loadHtml(url)
             if (success) {
                 if (!isDestroyed && !isFinishing) {
@@ -507,8 +560,11 @@ class MainActivity : AppCompatActivity() {
                 binding.previewCard.visibility = View.INVISIBLE
                 binding.downloaderCard.visibility = View.INVISIBLE
                 binding.overlayDownloading.visibility = View.INVISIBLE
+
                 binding.finishBtn.visibility = View.GONE
                 binding.finishBtn.alpha = 0.0f
+                binding.shareBtn.visibility = View.INVISIBLE
+                binding.shareBtn.alpha = 0.0f
 
                 binding.progressLabel.text = ""
             }
@@ -522,8 +578,11 @@ class MainActivity : AppCompatActivity() {
                 binding.downloaderCard.visibility = View.INVISIBLE
                 binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
                 binding.etMainInput.isEnabled = false
+
                 binding.btnPaste.isEnabled = false
                 binding.btnPaste.alpha = 0.5f
+                binding.shareBtn.visibility = View.INVISIBLE
+                binding.shareBtn.alpha = 0.0f
             }
             UIState.PREVIEW -> {
                 Log.d("MainActivity", "sl_ui_preview")
@@ -536,8 +595,11 @@ class MainActivity : AppCompatActivity() {
                 binding.downloaderCard.visibility = View.VISIBLE
                 binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
                 binding.dlBtn.visibility = View.VISIBLE
+
                 binding.finishBtn.visibility = View.GONE
                 binding.finishBtn.alpha = 0.0f
+                binding.shareBtn.visibility = View.INVISIBLE
+                binding.shareBtn.alpha = 0.0f
 
                 // Show Interstitial if not Gold
                 showInterstitial()
@@ -551,15 +613,20 @@ class MainActivity : AppCompatActivity() {
                 binding.overlayDownloading.visibility = View.VISIBLE
                 binding.dlBtn.visibility = View.INVISIBLE
                 binding.etMainInput.isEnabled = false
+
                 binding.btnPaste.isEnabled = false
                 binding.btnPaste.alpha = 0.5f
+                binding.shareBtn.visibility = View.INVISIBLE
+                binding.shareBtn.alpha = 0.0f
             }
             UIState.FINISHED -> {
                 Log.d("MainActivity", "sl_ui_finished")
                 logEvent("sl_ui_finished", url, "")
                 binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
                 binding.finishBtn.visibility = View.VISIBLE
-                binding.finishBtn.animate().alpha(0.8f)
+                binding.finishBtn.animate().alpha(0.5f)
+                binding.shareBtn.visibility = View.VISIBLE
+                binding.shareBtn.animate().alpha(1.0f)
                 incrementSuccessfulRuns()
             }
         }
@@ -640,6 +707,19 @@ class MainActivity : AppCompatActivity() {
             if ((currentCount / 4) % 2 != 0) {
                 if (!prefs.getBoolean("IS_GOLD", false)) showUpgradeDialog()
             } else showRateDialog()
+        }
+    }
+
+    private fun shareDownloadedFile() {
+        downloadedFileUri?.let { uri ->
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "audio/mpeg"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Share Audio"))
+        } ?: run {
+            Toast.makeText(this, "File not found to share.", Toast.LENGTH_SHORT).show()
         }
     }
 

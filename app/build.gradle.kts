@@ -66,4 +66,7 @@ dependencies {
 
     // Image Loading (For Thumbnails)
     implementation(libs.glide)
+
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation("com.google.android.play:review-ktx:2.0.2")
 }

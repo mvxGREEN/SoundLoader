@@ -14,6 +14,7 @@ espressoCore = "3.7.0"
 appcompat = "1.7.1"
 kotlinxCoroutinesAndroid = "1.10.2"
 kotlinxCoroutinesAndroidVersion = "1.10.2"
+lifecycleRuntimeKtx = "2.10.0"
 material = "1.13.0"
 okhttp = "5.3.2"
 playServicesAds = "24.9.0"
@@ -22,6 +23,7 @@ userMessagingPlatform = "4.0.0"
 [libraries]
 androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
 billing = { module = "com.android.billingclient:billing", version.ref = "billing" }
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
