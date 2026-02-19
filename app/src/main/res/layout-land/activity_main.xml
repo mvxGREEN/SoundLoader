@@ -111,66 +111,6 @@
     </LinearLayout>
 
     <androidx.cardview.widget.CardView
-        android:id="@+id/preview_card"
-        android:layout_width="match_parent"
-        android:layout_height="360dp"
-        android:layout_marginTop="24dp"
-        android:layout_marginBottom="16dp"
-        android:layout_marginHorizontal="16dp"
-        app:cardCornerRadius="16dp"
-        app:cardBackgroundColor="?attr/colorSurface"
-        app:cardElevation="0dp"
-        android:alpha="0.0"
-        app:layout_constraintTop_toBottomOf="@+id/searchContainer">
-
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent">
-
-            <ImageView
-                android:id="@+id/preview_img"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:contentDescription="@string/album_art"
-                android:scaleType="centerCrop" />
-
-            <FrameLayout
-                android:id="@+id/overlay_downloading"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="#99000000"
-                android:visibility="invisible">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:layout_gravity="center"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <ProgressBar
-                        android:id="@+id/progress_ring_dlr"
-                        style="?android:attr/progressBarStyleHorizontal"
-                        android:layout_width="160dp"
-                        android:layout_height="wrap_content"
-                        android:elevation="8dp"
-                        android:indeterminate="true"
-                        android:progressTint="?attr/colorAccent" />
-
-                    <TextView
-                        android:id="@+id/dl_progress_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="@string/downloading"
-                        android:textColor="@android:color/white"
-                        android:textSize="16sp" />
-                </LinearLayout>
-            </FrameLayout>
-        </FrameLayout>
-    </androidx.cardview.widget.CardView>
-
-    <androidx.cardview.widget.CardView
         android:id="@+id/downloader_card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -180,7 +120,7 @@
         app:cardBackgroundColor="?attr/colorSurface"
         app:cardElevation="2dp"
         android:alpha="0.0"
-        app:layout_constraintTop_toBottomOf="@+id/preview_card">
+        app:layout_constraintTop_toBottomOf="@+id/searchContainer">
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
@@ -270,6 +210,66 @@
             </FrameLayout>
 
         </androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.cardview.widget.CardView>
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/preview_card"
+        android:layout_width="match_parent"
+        android:layout_height="360dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="16dp"
+        android:layout_marginHorizontal="16dp"
+        app:cardCornerRadius="16dp"
+        app:cardBackgroundColor="?attr/colorSurface"
+        app:cardElevation="0dp"
+        android:alpha="0.0"
+        app:layout_constraintTop_toBottomOf="@+id/downloader_card">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <ImageView
+                android:id="@+id/preview_img"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@string/album_art"
+                android:scaleType="centerCrop" />
+
+            <FrameLayout
+                android:id="@+id/overlay_downloading"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#99000000"
+                android:visibility="invisible">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ProgressBar
+                        android:id="@+id/progress_ring_dlr"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="160dp"
+                        android:layout_height="wrap_content"
+                        android:elevation="8dp"
+                        android:indeterminate="true"
+                        android:progressTint="?attr/colorAccent" />
+
+                    <TextView
+                        android:id="@+id/dl_progress_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/downloading"
+                        android:textColor="@android:color/white"
+                        android:textSize="16sp" />
+                </LinearLayout>
+            </FrameLayout>
+        </FrameLayout>
     </androidx.cardview.widget.CardView>
 
     <WebView

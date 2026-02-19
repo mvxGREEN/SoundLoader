@@ -507,6 +507,8 @@ class MainActivity : AppCompatActivity() {
                 binding.previewCard.visibility = View.INVISIBLE
                 binding.downloaderCard.visibility = View.INVISIBLE
                 binding.overlayDownloading.visibility = View.INVISIBLE
+                binding.finishBtn.visibility = View.GONE
+                binding.finishBtn.alpha = 0.0f
 
                 binding.progressLabel.text = ""
             }
@@ -535,6 +537,7 @@ class MainActivity : AppCompatActivity() {
                 binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
                 binding.dlBtn.visibility = View.VISIBLE
                 binding.finishBtn.visibility = View.GONE
+                binding.finishBtn.alpha = 0.0f
 
                 // Show Interstitial if not Gold
                 showInterstitial()
@@ -556,7 +559,7 @@ class MainActivity : AppCompatActivity() {
                 logEvent("sl_ui_finished", url, "")
                 binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
                 binding.finishBtn.visibility = View.VISIBLE
-                binding.finishBtn.animate().alpha(1.0f)
+                binding.finishBtn.animate().alpha(0.8f)
                 incrementSuccessfulRuns()
             }
         }
