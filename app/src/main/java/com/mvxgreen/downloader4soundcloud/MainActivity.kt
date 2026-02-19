@@ -167,8 +167,6 @@ class MainActivity : AppCompatActivity() {
         checkIntent(intent)
 
         checkAndShowInAppReview()
-
-        showUpgradeDialog()
     }
 
     override fun onNewIntent(intent: Intent?) {
