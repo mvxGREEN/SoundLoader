@@ -13,28 +13,38 @@
         android:layout_height="wrap_content"
         android:padding="24dp">
 
+        <ImageView
+            android:id="@+id/ivTaggerIcon"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="tagger icon"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            android:src="@drawable/ic_launcher_tagger" />
+
         <TextView
-            android:id="@+id/tvUpgradeTitle"
+            android:id="@+id/tvTaggerTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/upgrade_dialog_title"
+            android:text="Tagger"
             android:textColor="#444444"
             android:textSize="24sp"
-            android:textStyle="bold"
-            app:layout_constraintStart_toStartOf="parent"
+            android:layout_marginStart="8dp"
+            app:layout_constraintStart_toEndOf="@id/ivTaggerIcon"
             app:layout_constraintTop_toTopOf="parent" />
 
         <TextView
-            android:id="@+id/tvUpgradeSubtitle"
+            android:id="@+id/tvTaggerSubtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="SoundLoader Gold"
+            android:text="Art and Tag Editor"
             android:textStyle="bold"
             android:textColor="#666666"
             android:textSize="16sp"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/tvUpgradeTitle" />
+            android:layout_marginStart="8dp"
+            app:layout_constraintStart_toEndOf="@id/ivTaggerIcon"
+            app:layout_constraintTop_toBottomOf="@+id/tvTaggerTitle" />
 
         <LinearLayout
             android:id="@+id/featureList"
@@ -42,35 +52,15 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             android:orientation="vertical"
-            app:layout_constraintTop_toBottomOf="@+id/tvUpgradeSubtitle">
+            app:layout_constraintTop_toBottomOf="@+id/tvTaggerSubtitle">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="✅    Download Playlists\n"
+                android:text="@string/tagger_dialog_body"
                 android:textColor="@android:color/black"
                 android:paddingStart="8dp" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="✅    Download Albums\n"
-                android:textColor="@android:color/black"
-                android:paddingStart="8dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="✅    Fastest speed\n"
-                android:textColor="@android:color/black"
-                android:paddingStart="8dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="✅    Ad-Free"
-                android:textColor="@android:color/black"
-                android:paddingStart="8dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -91,11 +81,11 @@
                 android:textColor="@android:color/white" />
 
             <Button
-                android:id="@+id/btnUpgrade"
+                android:id="@+id/btnGetTagger"
                 android:layout_width="120dp"
                 android:layout_height="wrap_content"
-                android:backgroundTint="#4CAF50"
-                android:text="GET IT"
+                android:backgroundTint="#006883"
+                android:text="Get It"
                 android:textColor="@android:color/white" />
         </LinearLayout>
 

@@ -37,6 +37,8 @@ import java.util.regex.Pattern
 import kotlin.toString
 import androidx.lifecycle.lifecycleScope
 import com.google.android.play.core.review.ReviewManagerFactory
+import com.mvxgreen.downloader4soundcloud.databinding.DialogMusiBinding
+import com.mvxgreen.downloader4soundcloud.databinding.DialogTaggerBinding
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -165,6 +167,8 @@ class MainActivity : AppCompatActivity() {
         checkIntent(intent)
 
         checkAndShowInAppReview()
+
+        showUpgradeDialog()
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -625,8 +629,12 @@ class MainActivity : AppCompatActivity() {
                 binding.overlayDownloading.visibility = View.INVISIBLE // Was GONE
                 binding.finishBtn.visibility = View.VISIBLE
                 binding.finishBtn.animate().alpha(0.5f)
-                binding.shareBtn.visibility = View.VISIBLE
+
+                // show share if not playlist
+                if (!SoundLoader.isPlaylist)
+                    binding.shareBtn.visibility = View.VISIBLE
                 binding.shareBtn.animate().alpha(1.0f)
+
                 incrementSuccessfulRuns()
             }
         }
@@ -703,10 +711,20 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("com.mvxgreen.prefs", Context.MODE_PRIVATE)
         val currentCount = prefs.getInt("SUCCESS_RUNS", 0) + 1
         prefs.edit().putInt("SUCCESS_RUNS", currentCount).apply()
-        if (currentCount > 0 && currentCount % 4 == 0) {
-            if ((currentCount / 4) % 2 != 0) {
-                if (!prefs.getBoolean("IS_GOLD", false)) showUpgradeDialog()
-            } else showRateDialog()
+        if (currentCount > 0 && currentCount % 3 == 0) {
+
+            // skip if gold
+            if(prefs.getBoolean("IS_GOLD", false)) {
+                Log.i("MainActivity", "is gold, skipping dialog")
+            } else {
+                if ((currentCount / 3) % 3 == 1) {
+                    showUpgradeDialog()
+                } else if ((currentCount / 3) % 3 == 2) {
+                    showMusiDialog()
+                } else {
+                    showTaggerDialog()
+                }
+            }
         }
     }
 
@@ -721,6 +739,36 @@ class MainActivity : AppCompatActivity() {
         } ?: run {
             Toast.makeText(this, "File not found to share.", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun showMusiDialog() {
+        logEvent("sl_musi_dialog", "", "")
+        val musiBinding = DialogMusiBinding.inflate(layoutInflater)
+        val dialog = AlertDialog.Builder(this).setView(musiBinding.root).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        musiBinding.btnNah.setOnClickListener { dialog.dismiss() }
+        musiBinding.btnGetMusi.setOnClickListener {
+            logEvent("sl_get_musi", "", "")
+            dialog.dismiss()
+            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=green.mobileapps.offlinemusicplayer"))) }
+            catch (e: ActivityNotFoundException) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=green.mobileapps.offlinemusicplayer"))) }
+        }
+        dialog.show()
+    }
+
+    private fun showTaggerDialog() {
+        logEvent("sl_tagger_dialog", "", "")
+        val taggerBinding = DialogTaggerBinding.inflate(layoutInflater)
+        val dialog = AlertDialog.Builder(this).setView(taggerBinding.root).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        taggerBinding.btnNah.setOnClickListener { dialog.dismiss() }
+        taggerBinding.btnGetTagger.setOnClickListener {
+            logEvent("sl_get_tagger", "", "")
+            dialog.dismiss()
+            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=green.mobileapps.musictageditor"))) }
+            catch (e: ActivityNotFoundException) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=green.mobileapps.musictageditor"))) }
+        }
+        dialog.show()
     }
 
     private fun showRateDialog() {
@@ -803,7 +851,7 @@ class MainActivity : AppCompatActivity() {
     private fun launchBillingFlow() {
         logEvent("sl_billing_launch", "", "")
         if (productDetails != null) {
-            val params = BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(productDetails!!).setOfferToken(productDetails!!.subscriptionOfferDetails?.get(0)?.offerToken ?: "").build())).build()
+            val params = BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(productDetails!!).setOfferToken(productDetails!!.subscriptionOfferDetails?.get(1)?.offerToken ?: "").build())).build()
             billingClient.launchBillingFlow(this, params)
         }
     }

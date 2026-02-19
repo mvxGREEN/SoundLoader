@@ -13,28 +13,38 @@
         android:layout_height="wrap_content"
         android:padding="24dp">
 
+        <ImageView
+            android:id="@+id/ivMusiIcon"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="tagger icon"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            android:src="@drawable/ic_launcher_musi" />
+
         <TextView
-            android:id="@+id/tvUpgradeTitle"
+            android:id="@+id/tvMusiTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/upgrade_dialog_title"
+            android:text="Musi"
             android:textColor="#444444"
             android:textSize="24sp"
-            android:textStyle="bold"
-            app:layout_constraintStart_toStartOf="parent"
+            android:layout_marginStart="8dp"
+            app:layout_constraintStart_toEndOf="@id/ivMusiIcon"
             app:layout_constraintTop_toTopOf="parent" />
 
         <TextView
-            android:id="@+id/tvUpgradeSubtitle"
+            android:id="@+id/tvMusiSubtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="SoundLoader Gold"
+            android:text="Music Player"
             android:textStyle="bold"
             android:textColor="#666666"
             android:textSize="16sp"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/tvUpgradeTitle" />
+            android:layout_marginStart="8dp"
+            app:layout_constraintStart_toEndOf="@id/ivMusiIcon"
+            app:layout_constraintTop_toBottomOf="@+id/tvMusiTitle" />
 
         <LinearLayout
             android:id="@+id/featureList"
@@ -42,35 +52,15 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             android:orientation="vertical"
-            app:layout_constraintTop_toBottomOf="@+id/tvUpgradeSubtitle">
+            app:layout_constraintTop_toBottomOf="@+id/tvMusiSubtitle">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="✅    Download Playlists\n"
+                android:text="@string/musi_dialog_body"
                 android:textColor="@android:color/black"
                 android:paddingStart="8dp" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="✅    Download Albums\n"
-                android:textColor="@android:color/black"
-                android:paddingStart="8dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="✅    Fastest speed\n"
-                android:textColor="@android:color/black"
-                android:paddingStart="8dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="✅    Ad-Free"
-                android:textColor="@android:color/black"
-                android:paddingStart="8dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -91,11 +81,11 @@
                 android:textColor="@android:color/white" />
 
             <Button
-                android:id="@+id/btnUpgrade"
+                android:id="@+id/btnGetMusi"
                 android:layout_width="120dp"
                 android:layout_height="wrap_content"
-                android:backgroundTint="#4CAF50"
-                android:text="GET IT"
+                android:backgroundTint="#0d2a10"
+                android:text="Get It"
                 android:textColor="@android:color/white" />
         </LinearLayout>
 
