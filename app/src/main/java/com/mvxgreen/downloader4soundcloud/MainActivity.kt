@@ -630,9 +630,10 @@ class MainActivity : AppCompatActivity() {
                 binding.finishBtn.animate().alpha(0.5f)
 
                 // show share if not playlist
-                if (!SoundLoader.isPlaylist)
+                if (!SoundLoader.isPlaylist) {
                     binding.shareBtn.visibility = View.VISIBLE
-                binding.shareBtn.animate().alpha(1.0f)
+                    binding.shareBtn.animate().alpha(1.0f)
+                }
 
                 incrementSuccessfulRuns()
             }
