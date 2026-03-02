@@ -3,7 +3,6 @@ package com.mvxgreen.downloader4soundcloud
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
-import android.app.DownloadManager
 import android.content.*
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -720,7 +719,7 @@ class MainActivity : AppCompatActivity() {
                 if ((currentCount / 3) % 3 == 1) {
                     showUpgradeDialog()
                 } else if ((currentCount / 3) % 3 == 2) {
-                    showMusiDialog()
+                    showMusixDialog()
                 } else {
                     showTaggerDialog()
                 }
@@ -741,17 +740,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showMusiDialog() {
-        logEvent("sl_musi_dialog", "", "")
+    private fun showMusixDialog() {
+        logEvent("sl_musix_dialog", "", "")
         val musiBinding = DialogMusiBinding.inflate(layoutInflater)
         val dialog = AlertDialog.Builder(this).setView(musiBinding.root).create()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         musiBinding.btnNah.setOnClickListener { dialog.dismiss() }
         musiBinding.btnGetMusi.setOnClickListener {
-            logEvent("sl_get_musi", "", "")
+            logEvent("sl_get_musix", "", "")
             dialog.dismiss()
-            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=green.mobileapps.offlinemusicplayer"))) }
-            catch (e: ActivityNotFoundException) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=green.mobileapps.offlinemusicplayer"))) }
+            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=green.mobileapps.musiplayeroffline"))) }
+            catch (e: ActivityNotFoundException) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=green.mobileapps.musiplayeroffline"))) }
         }
         dialog.show()
     }

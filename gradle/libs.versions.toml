@@ -18,6 +18,7 @@ lifecycleRuntimeKtx = "2.10.0"
 material = "1.13.0"
 okhttp = "5.3.2"
 playServicesAds = "24.9.0"
+reviewKtx = "2.0.2"
 userMessagingPlatform = "4.0.0"
 
 [libraries]
@@ -38,6 +39,7 @@ kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 play-services-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "playServicesAds" }
+review-ktx = { module = "com.google.android.play:review-ktx", version.ref = "reviewKtx" }
 user-messaging-platform = { module = "com.google.android.ump:user-messaging-platform", version.ref = "userMessagingPlatform" }
 
 [plugins]

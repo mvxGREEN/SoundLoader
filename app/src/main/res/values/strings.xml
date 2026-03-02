@@ -13,5 +13,5 @@
     <string name="about">About</string>
     <string name="upgrade">Upgrade</string>
     <string name="tagger_dialog_body"><![CDATA[Edit title, artist, album, art and more.\n\nAd by Green Mobile <3]]></string>
-    <string name="musi_dialog_body"><![CDATA[Listen to your music without ads.\n\nAd by Green Mobile <3]]></string>
+    <string name="musi_dialog_body"><![CDATA[Listen to your music, ad-free.\nAnytime, anywhere.\n\nAd by Green Mobile <3]]></string>
 </resources>

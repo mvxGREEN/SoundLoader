@@ -14,8 +14,8 @@ android {
         applicationId = "com.mvxgreen.downloader4soundcloud"
         minSdk = 24
         targetSdk = 36
-        versionCode = 115
-        versionName = "5.2.3"
+        versionCode = 116
+        versionName = "5.2.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -68,5 +68,5 @@ dependencies {
     implementation(libs.glide)
 
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation("com.google.android.play:review-ktx:2.0.2")
+    implementation(libs.review.ktx)
 }

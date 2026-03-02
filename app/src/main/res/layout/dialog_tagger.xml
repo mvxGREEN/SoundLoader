@@ -15,12 +15,13 @@
 
         <ImageView
             android:id="@+id/ivTaggerIcon"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginTop="8dp"
             android:contentDescription="tagger icon"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            android:src="@drawable/ic_launcher_tagger" />
+            android:src="@drawable/ic_launcher_tagger_two" />
 
         <TextView
             android:id="@+id/tvTaggerTitle"
@@ -29,7 +30,9 @@
             android:text="Tagger"
             android:textColor="#444444"
             android:textSize="24sp"
-            android:layout_marginStart="8dp"
+            android:textStyle="bold"
+            android:fontFamily="@font/gotu_regular"
+            android:layout_marginStart="16dp"
             app:layout_constraintStart_toEndOf="@id/ivTaggerIcon"
             app:layout_constraintTop_toTopOf="parent" />
 
@@ -37,12 +40,12 @@
             android:id="@+id/tvTaggerSubtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Art and Tag Editor"
+            android:text="Music Tag Editor"
             android:textStyle="bold"
             android:textColor="#666666"
             android:textSize="16sp"
-            android:layout_marginStart="8dp"
+            android:fontFamily="@font/gotu_regular"
+            android:layout_marginStart="16dp"
             app:layout_constraintStart_toEndOf="@id/ivTaggerIcon"
             app:layout_constraintTop_toBottomOf="@+id/tvTaggerTitle" />
 
@@ -57,8 +60,10 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
                 android:text="@string/tagger_dialog_body"
                 android:textColor="@android:color/black"
+                android:fontFamily="@font/gotu_regular"
                 android:paddingStart="8dp" />
 
         </LinearLayout>
@@ -78,14 +83,16 @@
                 android:layout_marginEnd="16dp"
                 android:backgroundTint="#888888"
                 android:text="Close"
+                android:fontFamily="@font/gotu_regular"
                 android:textColor="@android:color/white" />
 
             <Button
                 android:id="@+id/btnGetTagger"
                 android:layout_width="120dp"
                 android:layout_height="wrap_content"
-                android:backgroundTint="#006883"
+                android:backgroundTint="#5F8575"
                 android:text="Get It"
+                android:fontFamily="@font/gotu_regular"
                 android:textColor="@android:color/white" />
         </LinearLayout>
 
