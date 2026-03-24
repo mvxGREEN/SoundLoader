@@ -266,7 +266,7 @@
                     app:tint="?attr/colorAccent"
                     android:alpha="1.0"
                     android:visibility="invisible"
-                    android:contentDescription="Finished" />
+                    android:contentDescription="Share button" />
             </FrameLayout>
 
         </androidx.constraintlayout.widget.ConstraintLayout>
