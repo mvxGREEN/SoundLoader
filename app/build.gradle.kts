@@ -1,7 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
 }
 
 android {
@@ -52,15 +50,6 @@ dependencies {
     // ID3 Tags (Replaces TagLibSharp)
     implementation(libs.jaudiotagger)
 
-    // Google Play Services (AdMob & Billing)
-    implementation(libs.play.services.ads)
-    implementation(libs.billing)
-
-    // Firebase
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.google.firebase.crashlytics)
-    implementation(libs.google.firebase.analytics)
-
     // Coroutines (Async/Await replacement)
     implementation(libs.kotlinx.coroutines.android)
 
@@ -68,5 +57,4 @@ dependencies {
     implementation(libs.glide)
 
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.review.ktx)
 }

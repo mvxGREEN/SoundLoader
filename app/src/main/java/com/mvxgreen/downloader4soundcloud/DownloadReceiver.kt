@@ -6,14 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import com.google.firebase.analytics.FirebaseAnalytics
-import com.mvxgreen.downloader4soundcloud.SoundLoader.appContext
 import com.mvxgreen.downloader4soundcloud.SoundLoader.isCancelled
 import com.mvxgreen.downloader4soundcloud.SoundLoader.mLoadHtmlUrl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 class DownloadReceiver : BroadcastReceiver() {
     private val TAG = "DownloadReceiver"
@@ -97,7 +94,6 @@ class DownloadReceiver : BroadcastReceiver() {
                                         }
                                         bundle.putString("error_message", "download failures")
 
-                                        FirebaseAnalytics.getInstance(appContext).logEvent("sl_download_failure", bundle)
                                         Log.d("DownloadReceiver", "Logged Analytics Event: sl_download_failure")
                                     } catch (e: Exception) {
                                         Log.e("DownloadReceiver", "Failed to log analytics: ${e.message}")

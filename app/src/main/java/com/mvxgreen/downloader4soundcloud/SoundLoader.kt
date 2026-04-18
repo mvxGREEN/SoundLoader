@@ -29,7 +29,6 @@ import android.os.Bundle
 import android.provider.MediaStore
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.google.firebase.analytics.FirebaseAnalytics
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.supervisorScope
@@ -72,25 +71,6 @@ object SoundLoader {
 
     val absPathDocsTemp: String
         get() = appContext.getExternalFilesDir("temp")?.absolutePath + "/"
-
-    // --- NEW ANALYTICS HELPER ---
-    fun logErrorEvent(eventName: String, errorMessage: String, targetUrl: String = "") {
-        try {
-            val bundle = Bundle()
-            if (mLoadHtmlUrl.isNotEmpty()) {
-                bundle.putString("input_url", mLoadHtmlUrl)
-            }
-            if (targetUrl.isNotEmpty()) {
-                bundle.putString("target_url", targetUrl)
-            }
-            bundle.putString("error_message", errorMessage)
-
-            FirebaseAnalytics.getInstance(appContext).logEvent(eventName, bundle)
-            Log.d(TAG, "Logged Analytics Event: $eventName | Error: $errorMessage")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to log analytics: ${e.message}")
-        }
-    }
 
     fun prepareFileDirs() {
         val tempDir = File(absPathDocsTemp)
@@ -381,7 +361,7 @@ object SoundLoader {
                 }
             }
         } catch (e: Exception) {
-            logErrorEvent("sl_fetch_track_meta_exception", e.message ?: "Unknown Error", "$trackId")
+            Log.e("sl_fetch_track_meta_exception", e.message ?: "Unknown Error \ntrackId: $trackId")
             Log.e(TAG, "Failed to fetch track $trackId: ${e.message}")
         }
         return null
@@ -423,11 +403,11 @@ object SoundLoader {
             if (code == 200) {
                 return@withContext conn.inputStream.bufferedReader().use { it.readText() }
             } else {
-                logErrorEvent("sl_network_response_fail", "HTTP Code: $code", urlStr)
+                Log.e("sl_network_response_fail", "HTTP Code: $code \nURL: $urlStr")
                 return@withContext ""
             }
         } catch (e: Exception) {
-            logErrorEvent("sl_network_exception", e.message ?: "Unknown Error", urlStr)
+            Log.e("sl_network_exception", e.message ?: "Unknown Error \nURL: $urlStr")
             return@withContext ""
         }
     }
@@ -439,7 +419,7 @@ object SoundLoader {
             val jsonObj = JSONObject(json)
             if (jsonObj.has("url")) mM3uUrl = jsonObj.getString("url")
         } catch (e: Exception) {
-            logErrorEvent("sl_json_parse_exception", e.message ?: "Unknown Error", urlStr)
+            Log.e("sl_json_parse_exception", e.message ?: "Unknown Error \nURL: $urlStr")
         }
     }
 
@@ -484,7 +464,7 @@ object SoundLoader {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error setting tags: ${e.message}")
-            logErrorEvent("sl_tagging_exception", e.message ?: "Unknown Error", tempFilePath)
+            Log.e("sl_tagging_exception", e.message ?: "Unknown Error \ntempFilePath: $tempFilePath")
         }
     }
 
@@ -536,7 +516,7 @@ object SoundLoader {
             return@withContext uri.toString()
         } catch (e: Exception) {
             Log.e("SoundLoader", "Export failed: ${e.message}")
-            logErrorEvent("sl_export_exception", e.message ?: "Unknown Error", privatePath)
+            Log.e("sl_export_exception", e.message ?: "Unknown Error \nprivatePath: $privatePath")
             return@withContext ""
         }
     }
