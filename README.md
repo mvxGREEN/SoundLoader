@@ -1,11 +1,11 @@
-# SoundLoader-Android 🎵⬇️
+# SoundLoader 🎵⬇️
 
-[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)](https://github.com/mvxGREEN/Tagger/actions)
+[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)](https://github.com/mvxGREEN/SoundLoader/actions)
 [![License: WTFPL](https://img.shields.io/badge/License-WTFPL-brightgreen.svg)](http://www.wtfpl.net/about/)
 [![Language: Kotlin](https://img.shields.io/badge/Language-Kotlin-purple.svg)](https://kotlinlang.org/)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android-3DDC84.svg)](https://developer.android.com/)
 
-URL-to-MP3 Soundcloud music downloader app built natively for Android.  
+**SoundLoader** is a URL-to-MP3 Soundcloud music downloader app built natively for Android.  
 
 Supports Soundcloud links to tracks, albums and playlists.
 
@@ -21,7 +21,7 @@ Supports Soundcloud links to tracks, albums and playlists.
 
 ## ⚡️ Quick Start App
 
-1. Download latest APK from [Releases](https://github.com/mvxGREEN/SoundLoader-Android/releases) to an Android device.
+1. Download latest APK from [Releases](https://github.com/mvxGREEN/SoundLoader/releases) to an Android device.
 
 2. Open APK file to install.
 
@@ -38,12 +38,12 @@ To build and run this project locally, you will need [Android Studio](https://de
 ### Installation & Build
 
 1. **Clone the repository**
-    `git clone https://github.com/mvxGREEN/SoundLoader-Android.git`
+    `git clone https://github.com/mvxGREEN/SoundLoader.git`
 
 2. **Open the project in Android Studio**
    * Launch Android Studio.
    * Select **Open an existing Android Studio project**.
-   * Navigate to the cloned `SoundLoader-Android` directory and click **OK**.
+   * Navigate to the cloned directory and open.
 
 3. **Sync Gradle**
    * Wait for Android Studio to index the files and sync the Gradle dependencies.
@@ -60,7 +60,7 @@ To build and run this project locally, you will need [Android Studio](https://de
 
 ## 🤝 Contributing
 Contributions, issues, and feature requests are welcome! 
-Feel free to check the [issues page](https://github.com/mvxGREEN/SoundLoader-Android/issues) if you want to contribute. 
+Feel free to check the [issues page](https://github.com/mvxGREEN/SoundLoader/issues) if you want to contribute. 
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
