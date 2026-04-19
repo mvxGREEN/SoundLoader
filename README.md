@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/appicon_launcher.png" alt="SoundLoader App Icon" width="150"/>
+  <img src="assets/launcher_soundloader_round.png" alt="SoundLoader App Icon" width="160"/>
 </p>
 
 # SoundLoader 🎵⬇️
