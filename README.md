@@ -22,17 +22,17 @@ Supports Soundcloud links to tracks, albums and playlists.
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="assets/Samsung Galaxy S21 Screenshot 5.jpg" alt="SoundLoader: Music Downloader" width="250"/>
+  <img src="assets/Samsung Galaxy S21 Screenshot 5.png" alt="SoundLoader: Music Downloader" width="250"/>
   &nbsp;&nbsp;&nbsp;
-  <img src="assets/Samsung Galaxy S21 Screenshot 1.jpg" alt="Cloud-to-MP3" width="250"/>
+  <img src="assets/Samsung Galaxy S21 Screenshot 1.png" alt="Cloud-to-MP3" width="250"/>
   &nbsp;&nbsp;&nbsp;
-  <img src="assets/Samsung Galaxy S21 Screenshot 2.jpg" alt="Paste URL to Save" width="250"/>
+  <img src="assets/Samsung Galaxy S21 Screenshot 2.png" alt="Paste URL to Save" width="250"/>
 </p>
 
 <p align="center">
-  <img src="assets/Samsung Galaxy S21 Screenshot 4.jpg" alt="Albums & Playlists" width="250"/>
+  <img src="assets/Samsung Galaxy S21 Screenshot 4.png" alt="Albums & Playlists" width="250"/>
   &nbsp;&nbsp;&nbsp;
-  <img src="assets/Samsung Galaxy S21 Screenshot 3.jpg" alt="Listen Anytime, Anywhere" width="250"/>
+  <img src="assets/Samsung Galaxy S21 Screenshot 3.png" alt="Listen Anytime, Anywhere" width="250"/>
 </p>
 
 ## ⚡️ Quick Start App
