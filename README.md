@@ -27,7 +27,7 @@ Open APK file to install.
 
 Done!  Soundloader should be ready to run.
 
-### 💻 Start From Source Code:
+## 💻 Start From Source Code:
 
 To build and run this project locally, you will need [Android Studio](https://developer.android.com/studio) installed on your machine.
 
