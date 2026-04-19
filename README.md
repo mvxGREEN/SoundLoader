@@ -25,7 +25,7 @@ Supports songs, albums and playlists.
 
 2. Open APK file to install.
 
-3. Done!  Open Soundloader app to start downloading.
+3. Done!  Open **SoundLoader** app to start downloading audio.
 
 ## 💻 Build From Source Code:
 
