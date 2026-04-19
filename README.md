@@ -10,8 +10,8 @@ URL-to-MP3 Soundcloud music downloader built natively for Android.
 Supports songs, albums and playlists.
 
 ## ✨ Features
-* **Direct Downloads**: Easily download your favorite SoundCloud tracks directly to your Android device's local storage.
-* **Kotlin-First**: Written entirely (100%) in Kotlin, leveraging modern language features for a safe and concise codebase.
+* **Direct Downloads**: Easily download SoundCloud tracks to your Android device's local storage.
+* **Kotlin-First**: Written in Kotlin, leveraging modern language features for a safe and concise codebase.
 * **Modern Build System**: Utilizes Gradle Kotlin DSL (`*.gradle.kts`) for build scripts, ensuring better type safety and seamless IDE support.
 
 ## 🛠 Tech Stack
@@ -19,13 +19,15 @@ Supports songs, albums and playlists.
 * **Platform**: Android SDK
 * **Build Tool**: Gradle (Kotlin DSL)
 
-## 🚀 Getting Started
+## ⚡️ Quick Start:
 
-### Quick Start:
+Download latest APK from [Releases](https://github.com/mvxGREEN/SoundLoader-Android/releases) to an Android device.
 
-Download and install latest APK from [Releases](https://github.com/mvxGREEN/SoundLoader-Android/releases) to an Android device.  Done!
+Open APK file to install.
 
-### Start From Source Code:
+Done!  Soundloader should be ready to run.
+
+### 💻 Start From Source Code:
 
 To build and run this project locally, you will need [Android Studio](https://developer.android.com/studio) installed on your machine.
 
