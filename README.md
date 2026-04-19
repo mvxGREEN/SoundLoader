@@ -21,7 +21,10 @@ Supports songs, albums and playlists.
 
 ## 🚀 Getting Started
 
-To get a local copy up and running, follow these simple steps.
+**Quick Start:**
+Download and install latest APK from [Releases](https://github.com/mvxGREEN/SoundLoader-Android/releases) to an Android device.
+
+**Build from source code:**
 
 ### Prerequisites
 * **Android Studio**: Make sure you have the latest version of [Android Studio](https://developer.android.com/studio) installed.
