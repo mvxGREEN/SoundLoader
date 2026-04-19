@@ -21,11 +21,11 @@ Supports songs, albums and playlists.
 
 ## ⚡️ Quick Start:
 
-Download latest APK from [Releases](https://github.com/mvxGREEN/SoundLoader-Android/releases) to an Android device.
+1. Download latest APK from [Releases](https://github.com/mvxGREEN/SoundLoader-Android/releases) to an Android device.
 
-Open APK file to install.
+2. Open APK file to install.
 
-Done!  Soundloader should be ready to run.
+3. Done!  Open Soundloader app to start downloading.
 
 ## 💻 Build From Source Code:
 
