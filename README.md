@@ -5,7 +5,9 @@
 [![Language: Kotlin](https://img.shields.io/badge/Language-Kotlin-purple.svg)](https://kotlinlang.org/)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android-3DDC84.svg)](https://developer.android.com/)
 
-URL-to-MP3 Soundcloud music downloader built natively for Android.  Supports songs, albums and playlists.
+URL-to-MP3 Soundcloud music downloader built natively for Android.  
+
+Supports songs, albums and playlists.
 
 ## ✨ Features
 * **Direct Downloads**: Easily download your favorite SoundCloud tracks directly to your Android device's local storage.
