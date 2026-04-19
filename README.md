@@ -19,6 +19,22 @@ Supports Soundcloud links to tracks, albums and playlists.
 * **Platform**: Android SDK
 * **Build Tool**: Gradle (Kotlin DSL)
 
+## 📸 Screenshots
+
+<p align="center">
+  <img src="assets/Samsung Galaxy S21 Screenshot 5.jpg" alt="SoundLoader: Music Downloader" width="250"/>
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/Samsung Galaxy S21 Screenshot 1.jpg" alt="Cloud-to-MP3" width="250"/>
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/Samsung Galaxy S21 Screenshot 2.jpg" alt="Paste URL to Save" width="250"/>
+</p>
+
+<p align="center">
+  <img src="assets/Samsung Galaxy S21 Screenshot 4.jpg" alt="Albums & Playlists" width="250"/>
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/Samsung Galaxy S21 Screenshot 3.jpg" alt="Listen Anytime, Anywhere" width="250"/>
+</p>
+
 ## ⚡️ Quick Start App
 
 1. Download latest APK from [Releases](https://github.com/mvxGREEN/SoundLoader/releases) to an Android device.
