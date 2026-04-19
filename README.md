@@ -19,7 +19,7 @@ Supports songs, albums and playlists.
 * **Platform**: Android SDK
 * **Build Tool**: Gradle (Kotlin DSL)
 
-## ⚡️ Quick Start:
+## ⚡️ Quick Start
 
 1. Download latest APK from [Releases](https://github.com/mvxGREEN/SoundLoader-Android/releases) to an Android device.
 
@@ -27,7 +27,7 @@ Supports songs, albums and playlists.
 
 3. Done!  Open **SoundLoader** app to start downloading audio.
 
-## 💻 Build From Source Code:
+## 💻 Build From Source Code
 
 To build and run this project locally, you will need [Android Studio](https://developer.android.com/studio) installed on your machine.
 
