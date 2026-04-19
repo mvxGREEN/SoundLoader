@@ -27,6 +27,8 @@ Download and install latest APK from [Releases](https://github.com/mvxGREEN/Soun
 
 ### Start From Source Code:
 
+To build and run this project locally, you will need [Android Studio](https://developer.android.com/studio) installed on your machine.
+
 ### Prerequisites
 * **Android Studio**: Make sure you have the latest version of [Android Studio](https://developer.android.com/studio) installed.
 * **Android SDK**: API level 24 or higher is recommended (check the `build.gradle.kts` for specific `minSdk` and `targetSdk` configurations).
