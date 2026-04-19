@@ -39,8 +39,6 @@ To get a local copy up and running, follow these simple steps.
 
 ## 💡 Usage
 
-*(Note: You can expand this section with specific app instructions, e.g., how to paste a SoundCloud link or use the Android "Share" intent from the official SoundCloud app to trigger a download.)*
-
 1. Open the SoundLoader app.
 2. Paste the URL of the SoundCloud track you wish to download.
 3. Tap the download button and wait for the track to be saved to your device.
