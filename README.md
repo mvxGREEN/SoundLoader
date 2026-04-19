@@ -1,5 +1,9 @@
 # SoundLoader-Android 🎵
 
+[![License: WTFPL](https://img.shields.io/badge/License-WTFPL-brightgreen.svg)](http://www.wtfpl.net/about/)
+[![Language: Kotlin](https://img.shields.io/badge/Language-Kotlin-purple.svg)](https://kotlinlang.org/)
+[![Platform: Android](https://img.shields.io/badge/Platform-Android-3DDC84.svg)](https://developer.android.com/)
+
 A straightforward and lightweight Android application designed to download audio tracks directly from SoundCloud. 
 
 ## ✨ Features
