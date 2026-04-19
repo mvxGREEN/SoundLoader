@@ -25,7 +25,7 @@ Supports songs, albums and playlists.
 
 Download and install latest APK from [Releases](https://github.com/mvxGREEN/SoundLoader-Android/releases) to an Android device.
 
-### Start From Source Code:
+### Or Start From Source Code:
 
 ### Prerequisites
 * **Android Studio**: Make sure you have the latest version of [Android Studio](https://developer.android.com/studio) installed.
