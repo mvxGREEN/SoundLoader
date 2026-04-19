@@ -19,7 +19,7 @@ Supports songs, albums and playlists.
 * **Platform**: Android SDK
 * **Build Tool**: Gradle (Kotlin DSL)
 
-## ⚡️ Quick Start
+## ⚡️ Quick Start App
 
 1. Download latest APK from [Releases](https://github.com/mvxGREEN/SoundLoader-Android/releases) to an Android device.
 
