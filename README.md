@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/appicon_launcher.png" alt="SoundLoader App Icon" width="150"/>
+</p>
+
 # SoundLoader 🎵⬇️
 
 [![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)](https://github.com/mvxGREEN/SoundLoader/actions)
