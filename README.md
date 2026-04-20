@@ -9,20 +9,6 @@
 [![Language: Kotlin](https://img.shields.io/badge/Language-Kotlin-purple.svg)](https://kotlinlang.org/)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android-3DDC84.svg)](https://developer.android.com/)
 
-**SoundLoader** is a URL-to-MP3 Soundcloud music downloader app built natively for Android.  
-
-Supports Soundcloud links to tracks, albums and playlists.
-
-## ✨ Features
-* **Direct Downloads**: Easily download SoundCloud tracks to your Android device's local storage.
-* **Kotlin-First**: Written in Kotlin, leveraging modern language features for a safe and concise codebase.
-* **Modern Build System**: Utilizes Gradle Kotlin DSL (`*.gradle.kts`) for build scripts, ensuring better type safety and seamless IDE support.
-
-## 🛠 Tech Stack
-* **Language**: [Kotlin](https://kotlinlang.org/)
-* **Platform**: Android SDK
-* **Build Tool**: Gradle (Kotlin DSL)
-
 ## 📸 Screenshots
 
 <p align="center">
@@ -34,6 +20,21 @@ Supports Soundcloud links to tracks, albums and playlists.
   &nbsp;&nbsp;&nbsp;&nbsp;
   <img src="assets/Samsung Galaxy S21 Screenshot 4.png" alt="Albums & Playlists" width="180"/>
 </p>
+
+**SoundLoader** is a URL-to-MP3 Soundcloud music downloader app built natively for Android.  
+
+Supports Soundcloud track, album and playlist URLs.
+
+## ✨ Features
+* **Fast Downloads**: Easily download SoundCloud tracks to your Android device's local storage.
+* **Batch Downloads**: Download albums and playlists in the background.
+* **Kotlin-First**: Written in Kotlin, leveraging modern language features for a safe and efficient codebase.
+* **Modern Build System**: Utilizes Gradle Kotlin DSL (`*.gradle.kts`) for build scripts, ensuring better type safety and seamless IDE support.
+
+## 🛠 Tech Stack
+* **Language**: [Kotlin](https://kotlinlang.org/)
+* **Platform**: Android SDK
+* **Build Tool**: Gradle (Kotlin DSL)
 
 ## ⚡️ Quick Start App
 
