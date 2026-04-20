@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/launcher_soundloader_round.png" alt="SoundLoader App Icon" width="200"/>
+  <img src="assets/launcher_soundloader_round.png" alt="SoundLoader App Icon" width="180"/>
 </p>
 
 # SoundLoader 🎵⬇️
@@ -26,13 +26,13 @@ Supports Soundcloud links to tracks, albums and playlists.
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="assets/Samsung Galaxy S21 Screenshot 5.png" alt="SoundLoader: Music Downloader" width="200"/>
+  <img src="assets/Samsung Galaxy S21 Screenshot 5.png" alt="SoundLoader: Music Downloader" width="180"/>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="assets/Samsung Galaxy S21 Screenshot 2.png" alt="Paste URL to Save" width="200"/>
+  <img src="assets/Samsung Galaxy S21 Screenshot 2.png" alt="Paste URL to Save" width="180"/>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="assets/Samsung Galaxy S21 Screenshot 1.png" alt="Cloud-to-MP3" width="200"/>
+  <img src="assets/Samsung Galaxy S21 Screenshot 1.png" alt="Cloud-to-MP3" width="180"/>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="assets/Samsung Galaxy S21 Screenshot 4.png" alt="Albums & Playlists" width="200"/>
+  <img src="assets/Samsung Galaxy S21 Screenshot 4.png" alt="Albums & Playlists" width="180"/>
 </p>
 
 ## ⚡️ Quick Start App
