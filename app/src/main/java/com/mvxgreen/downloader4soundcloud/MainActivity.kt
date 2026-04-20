@@ -107,7 +107,6 @@ class MainActivity : AppCompatActivity() {
             if (!isGranted) Toast.makeText(this, "Notifications are recommended", Toast.LENGTH_SHORT).show()
             requestBatteryOptimization()
         }
-        startBackgroundPermissionChain()
 
         setupToolbarMenu()
         setupListeners()
@@ -200,7 +199,6 @@ class MainActivity : AppCompatActivity() {
     private fun setupToolbarMenu() {
         binding.toolbar.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
-                R.id.action_privacy -> { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://mobileapps.green/privacy-policy"))); true }
                 R.id.action_about -> { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://mobileapps.green/"))); true }
                 R.id.action_enable_background -> { startBackgroundPermissionChain(); true }
                 else -> false

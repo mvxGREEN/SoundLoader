@@ -3,26 +3,8 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/action_upgrade"
-        android:title="@string/upgrade"
-        android:icon="@drawable/ic_diamond"
-        app:showAsAction="always" />
-
-    <!--
-    <item
-        android:id="@+id/action_rate"
-        android:title="Rate"
-        app:showAsAction="never" />
-        -->
-
-    <item
         android:id="@+id/action_about"
         android:title="@string/about"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/action_privacy"
-        android:title="@string/privacy"
         app:showAsAction="never" />
 
     <item
