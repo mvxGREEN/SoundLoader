@@ -9,7 +9,7 @@
 [![Language: Kotlin](https://img.shields.io/badge/Language-Kotlin-purple.svg)](https://kotlinlang.org/)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android-3DDC84.svg)](https://developer.android.com/)
 
-**SoundLoader** is a URL-to-MP3 Soundcloud music downloader app built natively for Android.  It supports Soundcloud track, album and playlist URLs.
+**SoundLoader** is a URL-to-MP3 Soundcloud music downloader app built natively for Android.  It supports Soundcloud track, album and playlist URL inputs.
 
 ## 📸 Screenshots
 
