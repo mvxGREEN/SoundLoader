@@ -12,8 +12,8 @@ android {
         applicationId = "com.mvxgreen.downloader4soundcloud"
         minSdk = 24
         targetSdk = 37
-        versionCode = 117
-        versionName = "5.3.1"
+        versionCode = 118
+        versionName = "5.3.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
