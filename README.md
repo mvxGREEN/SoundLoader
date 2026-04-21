@@ -14,13 +14,13 @@
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="assets/Samsung Galaxy S21 Screenshot 5.png" alt="SoundLoader: Music Downloader" width="180"/>
+  <img src="assets/Screenshot 1.png" alt="SoundLoader: Music Downloader" width="180"/>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="assets/Samsung Galaxy S21 Screenshot 2.png" alt="Paste URL to Save" width="180"/>
+  <img src="assets/Screenshot 2.png" alt="Paste URL to Save" width="180"/>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="assets/Samsung Galaxy S21 Screenshot 1.png" alt="Cloud-to-MP3" width="180"/>
+  <img src="assets/Screenshot 3.png" alt="Cloud-to-MP3" width="180"/>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="assets/Samsung Galaxy S21 Screenshot 4.png" alt="Albums & Playlists" width="180"/>
+  <img src="assets/Screenshot 4.png" alt="Albums & Playlists" width="180"/>
 </p>
 
 ## ✨ Features
