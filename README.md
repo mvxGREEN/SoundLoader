@@ -26,7 +26,7 @@
 ## ✨ Features
 * **Fast Downloads**: Easily download SoundCloud tracks to your Android device's local storage.
 * **Batch Downloads**: Download albums and playlists in the background.
-* **Kotlin-First**: Written in Kotlin, leveraging modern language features for a safe and efficient codebase.
+* **Kotlin**: Written in Kotlin, leveraging modern language features for a safe and efficient codebase.
 * **Modern Build System**: Utilizes Gradle Kotlin DSL (`*.gradle.kts`) for build scripts, ensuring better type safety and seamless IDE support.
 
 ## 🛠 Tech Stack
